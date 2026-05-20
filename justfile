@@ -1,7 +1,10 @@
-# F1 Predictions — Pipeline Runner
+# F1 Predictions - Pipeline Runner
 # Run `just` (no args) to list all available targets.
 
 set windows-shell := ["powershell.exe", "-NoLogo", "-NoProfile", "-Command"]
+
+# Force UTF-8 stdout so non-ASCII race names (Sao Paulo etc.) don't break prints.
+export PYTHONIOENCODING := "utf-8"
 
 default:
     @just --list
@@ -37,23 +40,49 @@ test:
 
 # Verify FastF1 can fetch + cache one race
 smoke-fastf1:
-    uv run python -m src.ingest.fastf1_ingest
+    uv run python -m src.ingest.fastf1_ingest smoke
 
 # Verify Jolpica-F1 API reachable
 smoke-jolpica:
-    uv run python -m src.ingest.jolpica_ingest
+    uv run python -m src.ingest.jolpica_ingest smoke
 
 # Verify Open-Meteo API reachable
 smoke-meteo:
-    uv run python -m src.ingest.openmeteo_ingest
+    uv run python -m src.ingest.openmeteo_ingest smoke
 
 # All three smoke tests in sequence
 smoke: smoke-fastf1 smoke-jolpica smoke-meteo
 
-# --- Phase 1 placeholders (filled later) ---
+# --- Phase 1 Ingest ---
 
-fetch RACE:
-    @echo "Not implemented yet (Phase 1): fetch {{RACE}}"
+# Refresh per-season schedules (Jolpica) + rebuild race inventory
+ingest-schedule:
+    uv run python -m src.ingest.jolpica_ingest schedule --years 2018 2019 2020 2021 2022 2023 2024 2025 2026
+    uv run python -m src.utils.race_inventory build
+
+# Print summary of the cached race inventory
+inventory-show:
+    uv run python -m src.utils.race_inventory show
+
+# Pull all three sources for one race weekend
+ingest-race YEAR ROUND:
+    uv run python -m src.ingest.fastf1_ingest race --year {{YEAR}} --round {{ROUND}}
+    uv run python -m src.ingest.jolpica_ingest results --year {{YEAR}} --round {{ROUND}}
+    uv run python -m src.ingest.openmeteo_ingest race --year {{YEAR}} --round {{ROUND}}
+
+# Pull all three sources for every completed race in a season
+ingest-season YEAR:
+    uv run python -m src.ingest.fastf1_ingest season --year {{YEAR}}
+    uv run python -m src.ingest.jolpica_ingest results --year {{YEAR}}
+    uv run python -m src.ingest.openmeteo_ingest season --year {{YEAR}}
+
+# Full backfill across all sources. WARNING: first run takes hours (FastF1 cache cold-start).
+ingest-all:
+    uv run python -m src.ingest.fastf1_ingest all
+    uv run python -m src.ingest.jolpica_ingest results --all
+    uv run python -m src.ingest.openmeteo_ingest all
+
+# --- Phase 1 placeholders (filled later) ---
 
 build:
     @echo "Not implemented yet (Phase 1): build feature table"
