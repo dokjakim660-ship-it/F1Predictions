@@ -1,0 +1,58 @@
+[project]
+name = "f1-predictions"
+version = "0.0.1"
+description = "F1 race outcome predictions (podium + teammate H2H) — learning project + Tipico-beating ambitions."
+readme = "PLANNING.md"
+requires-python = ">=3.11,<3.14"
+
+dependencies = [
+    # --- Data Ingest ---
+    "fastf1>=3.4",
+    "requests>=2.32",
+
+    # --- Data Handling ---
+    "pandas>=2.2",
+    "pyarrow>=16",
+    "duckdb>=1.0",
+    "numpy>=1.26",
+
+    # --- Modelling ---
+    "scikit-learn>=1.5",
+    "xgboost>=2.1",
+    "lightgbm>=4.5",
+
+    # --- Tuning + Tracking ---
+    "optuna>=4.0",
+    "mlflow>=2.16",
+
+    # --- Plotting (EDA + Calibration plots) ---
+    "matplotlib>=3.9",
+    "seaborn>=0.13",
+]
+
+[dependency-groups]
+dev = [
+    "pytest>=8.3",
+    "pytest-cov>=5.0",
+    "ruff>=0.6",
+    "ipykernel>=6.29",
+    "jupyterlab>=4.2",
+]
+# Phase 2: HuggingFace Spaces app
+app = [
+    "streamlit>=1.38",
+]
+
+[tool.uv]
+package = false
+
+[tool.ruff]
+line-length = 100
+target-version = "py312"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "W", "UP", "B"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-ra -q"

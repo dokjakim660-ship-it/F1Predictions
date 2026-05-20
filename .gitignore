@@ -1,0 +1,39 @@
+# --- Python / uv ---
+.venv/
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.python-version-local
+build/
+dist/
+*.egg-info/
+
+# --- FastF1 Cache (NICHT im Repo, kann mehrere GB werden) ---
+data/raw/fastf1_cache/
+
+# --- MLflow ---
+mlruns/
+mlartifacts/
+
+# --- Optuna SQLite ---
+*.db
+*.sqlite
+*.sqlite3
+
+# --- Notebooks / Editor ---
+.ipynb_checkpoints/
+.vscode/
+.idea/
+*.swp
+
+# --- OS ---
+Thumbs.db
+.DS_Store
+desktop.ini
+
+# --- Secrets / Local Config ---
+.env
+.env.local
+secrets.toml
+*.key
