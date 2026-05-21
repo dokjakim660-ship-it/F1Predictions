@@ -1,0 +1,13 @@
+{
+  "year": 2019,
+  "round": 7,
+  "code": "R",
+  "session_name": "Race",
+  "event_name": "Canadian Grand Prix",
+  "event_date": "2019-06-09 00:00:00",
+  "session_date": "2019-06-09 18:10:00",
+  "total_laps": 70,
+  "n_results": 20,
+  "n_laps": 1312,
+  "n_weather": 126
+}

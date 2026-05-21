@@ -1,0 +1,13 @@
+{
+  "year": 2018,
+  "round": 1,
+  "code": "R",
+  "session_name": "Race",
+  "event_name": "Australian Grand Prix",
+  "event_date": "2018-03-25 00:00:00",
+  "session_date": "2018-03-25 05:10:00",
+  "total_laps": 58,
+  "n_results": 20,
+  "n_laps": 940,
+  "n_weather": 111
+}
