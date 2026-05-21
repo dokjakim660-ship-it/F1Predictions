@@ -76,11 +76,12 @@ ingest-season YEAR:
     uv run python -m src.ingest.jolpica_ingest results --year {{YEAR}}
     uv run python -m src.ingest.openmeteo_ingest season --year {{YEAR}}
 
-# Full backfill across all sources. WARNING: first run takes hours (FastF1 cache cold-start).
+# Full backfill across all sources. Lightweight sources first (Open-Meteo, Jolpica)
+# so they finish even if FastF1 rate-limits us (500 calls/h - see prune-rate-limit).
 ingest-all:
-    uv run python -m src.ingest.fastf1_ingest all
-    uv run python -m src.ingest.jolpica_ingest results --all
     uv run python -m src.ingest.openmeteo_ingest all
+    uv run python -m src.ingest.jolpica_ingest results --all
+    uv run python -m src.ingest.fastf1_ingest all
 
 # --- Phase 1 placeholders (filled later) ---
 

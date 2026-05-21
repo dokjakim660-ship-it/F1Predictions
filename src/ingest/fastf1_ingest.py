@@ -27,6 +27,7 @@ from pathlib import Path
 
 import fastf1
 import pandas as pd
+from fastf1.exceptions import RateLimitExceededError
 
 from src.utils.paths import FASTF1_CACHE, RAW_DIR
 from src.utils.race_inventory import load_inventory
@@ -105,6 +106,11 @@ def _save_session(year: int, round_no: int, code: str, *, refresh: bool = False)
             "n_weather": n_weather,
         }
         (out_dir / "session_info.json").write_text(json.dumps(info, indent=2))
+    except RateLimitExceededError:
+        # Temporary - DO NOT write a marker, so the next run retries this session.
+        # Re-raise so the whole bulk pull stops cleanly instead of burning through
+        # every remaining race with the same error.
+        raise
     except Exception as e:
         err = {"year": year, "round": round_no, "code": code, "error": str(e)[:300]}
         (out_dir / "session_info.json").write_text(json.dumps(err, indent=2))
@@ -157,6 +163,38 @@ def pull_all(*, refresh: bool = False) -> None:
         pull_race_weekend(int(row["year"]), int(row["round"]), refresh=refresh)
 
 
+def prune_rate_limit_markers() -> int:
+    """Drop session_info.json markers that were written for a transient rate-limit hit.
+
+    Keeps permanent "session does not exist" markers (sprint weekends without FP2 etc.).
+    Run this after a bulk pull aborted on the FastF1 500-calls/h limit, then rerun
+    `ingest-all` to retry those sessions.
+    """
+    if not FASTF1_DIR.exists():
+        print("[prune] nothing to do - data/raw/fastf1 missing")
+        return 0
+    pruned = 0
+    kept = 0
+    for session_info in FASTF1_DIR.glob("*/session_info.json"):
+        try:
+            info = json.loads(session_info.read_text())
+        except json.JSONDecodeError:
+            continue
+        err = info.get("error", "")
+        if not err:
+            continue
+        if "calls/h" in err or "Too Many Requests" in err or "429" in err:
+            session_dir = session_info.parent
+            for f in session_dir.iterdir():
+                f.unlink()
+            session_dir.rmdir()
+            pruned += 1
+        else:
+            kept += 1
+    print(f"[prune] removed {pruned} rate-limit markers, kept {kept} permanent markers")
+    return 0
+
+
 def smoke_test(year: int = 2024, gp: str = "Monaco", session: str = "R") -> int:
     _ensure_cache()
     print(f"[fastf1] loading {year} {gp} {session} ...")
@@ -190,19 +228,34 @@ def main(argv: list[str] | None = None) -> int:
     p_all = sub.add_parser("all", help="Pull every completed race in the inventory")
     p_all.add_argument("--refresh", action="store_true")
 
+    sub.add_parser(
+        "prune-rate-limit",
+        help="Remove session markers caused by transient rate-limit hits (so they get retried)",
+    )
+
     args = p.parse_args(argv)
 
-    if args.cmd in (None, "smoke"):
-        return smoke_test()
-    if args.cmd == "race":
-        pull_race_weekend(args.year, args.round, refresh=args.refresh)
-        return 0
-    if args.cmd == "season":
-        pull_season(args.year, refresh=args.refresh)
-        return 0
-    if args.cmd == "all":
-        pull_all(refresh=args.refresh)
-        return 0
+    try:
+        if args.cmd in (None, "smoke"):
+            return smoke_test()
+        if args.cmd == "race":
+            pull_race_weekend(args.year, args.round, refresh=args.refresh)
+            return 0
+        if args.cmd == "season":
+            pull_season(args.year, refresh=args.refresh)
+            return 0
+        if args.cmd == "all":
+            pull_all(refresh=args.refresh)
+            return 0
+        if args.cmd == "prune-rate-limit":
+            return prune_rate_limit_markers()
+    except RateLimitExceededError as e:
+        print(
+            f"\n[fastf1] STOP - FastF1 rate limit hit ({e}).\n"
+            "        Wait ~1 hour, then rerun the same command.\n"
+            "        Already-pulled sessions skip via session_info.json markers."
+        )
+        return 2
     return 0
 
 
