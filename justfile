@@ -83,13 +83,37 @@ ingest-all:
     uv run python -m src.ingest.jolpica_ingest results --all
     uv run python -m src.ingest.fastf1_ingest all
 
+# --- Phase 1.1 Process (RAW -> L2 processed parquet) ---
+
+# Build all three L2 processed parquets (results, weather, sessions)
+build-l2:
+    uv run python -m src.process.jolpica build
+    uv run python -m src.process.openmeteo build
+    uv run python -m src.process.fastf1 build
+
+# Print summaries of all three L2 parquets
+show-l2:
+    uv run python -m src.process.jolpica show
+    uv run python -m src.process.openmeteo show
+    uv run python -m src.process.fastf1 show
+
+# --- Phase 1.3 Baseline model (Brier latte vor MVP) ---
+
+# Build baseline feature table from L2 results.parquet
+build-baseline-features:
+    uv run python -m src.features.baseline build
+
+# Train + evaluate baseline models, save predictions + pickled LogReg
+train-baseline: build-baseline-features
+    uv run python -m src.models.baseline train
+
 # --- Phase 1 placeholders (filled later) ---
 
 build:
-    @echo "Not implemented yet (Phase 1): build feature table"
+    @echo "Not implemented yet (Phase 1): build full feature table"
 
 train:
-    @echo "Not implemented yet (Phase 1): train models"
+    @echo "Not implemented yet (Phase 1): train MVP models"
 
 predict RACE:
     @echo "Not implemented yet (Phase 1): predict {{RACE}}"
