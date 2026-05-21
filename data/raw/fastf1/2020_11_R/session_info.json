@@ -1,0 +1,13 @@
+{
+  "year": 2020,
+  "round": 11,
+  "code": "R",
+  "session_name": "Race",
+  "event_name": "Eifel Grand Prix",
+  "event_date": "2020-10-11 00:00:00",
+  "session_date": "2020-10-11 12:10:00",
+  "total_laps": 60,
+  "n_results": 20,
+  "n_laps": 1019,
+  "n_weather": 98
+}

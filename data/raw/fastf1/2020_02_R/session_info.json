@@ -1,0 +1,13 @@
+{
+  "year": 2020,
+  "round": 2,
+  "code": "R",
+  "session_name": "Race",
+  "event_name": "Styrian Grand Prix",
+  "event_date": "2020-07-12 00:00:00",
+  "session_date": "2020-07-12 13:10:00",
+  "total_laps": 71,
+  "n_results": 20,
+  "n_laps": 1226,
+  "n_weather": 120
+}

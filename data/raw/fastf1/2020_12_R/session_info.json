@@ -1,0 +1,13 @@
+{
+  "year": 2020,
+  "round": 12,
+  "code": "R",
+  "session_name": "Race",
+  "event_name": "Portuguese Grand Prix",
+  "event_date": "2020-10-25 00:00:00",
+  "session_date": "2020-10-25 13:10:00",
+  "total_laps": 66,
+  "n_results": 20,
+  "n_laps": 1288,
+  "n_weather": 128
+}

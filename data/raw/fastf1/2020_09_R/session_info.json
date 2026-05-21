@@ -1,0 +1,13 @@
+{
+  "year": 2020,
+  "round": 9,
+  "code": "R",
+  "session_name": "Race",
+  "event_name": "Tuscan Grand Prix",
+  "event_date": "2020-09-13 00:00:00",
+  "session_date": "2020-09-13 13:10:00",
+  "total_laps": 59,
+  "n_results": 20,
+  "n_laps": 786,
+  "n_weather": 176
+}

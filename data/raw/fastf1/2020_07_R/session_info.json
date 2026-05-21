@@ -1,0 +1,13 @@
+{
+  "year": 2020,
+  "round": 7,
+  "code": "R",
+  "session_name": "Race",
+  "event_name": "Belgian Grand Prix",
+  "event_date": "2020-08-30 00:00:00",
+  "session_date": "2020-08-30 13:10:00",
+  "total_laps": 44,
+  "n_results": 20,
+  "n_laps": 768,
+  "n_weather": 121
+}
