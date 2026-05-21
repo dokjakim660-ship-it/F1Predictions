@@ -55,6 +55,19 @@ def _write_parquet_safe(df: pd.DataFrame | None, path: Path) -> int:
     return len(df)
 
 
+def _safe_df(s, attr: str):
+    """Return getattr(s, attr) or None if FastF1 raises DataNotLoadedError.
+
+    Some sessions load partially (e.g. driver list ok, lap data missing). FastF1
+    only raises on property access, so we have to guard each one individually
+    instead of trusting Session.load() to either succeed or raise.
+    """
+    try:
+        return getattr(s, attr)
+    except Exception:
+        return None
+
+
 def _save_session(year: int, round_no: int, code: str, *, refresh: bool = False) -> bool:
     out_dir = _session_dir(year, round_no, code)
     if not refresh and _is_done(out_dir):
@@ -64,40 +77,43 @@ def _save_session(year: int, round_no: int, code: str, *, refresh: bool = False)
     try:
         s = fastf1.get_session(year, round_no, code)
         s.load(laps=True, telemetry=False, weather=True, messages=False)
+
+        event_name = ""
+        event_date = ""
+        try:
+            if getattr(s, "event", None) is not None:
+                event_name = str(s.event.get("EventName", "") or "")
+                event_date = str(s.event.get("EventDate", "") or "")
+        except Exception:
+            pass
+
+        n_results = _write_parquet_safe(_safe_df(s, "results"), out_dir / "results.parquet")
+        n_laps = _write_parquet_safe(_safe_df(s, "laps"), out_dir / "laps.parquet")
+        n_weather = _write_parquet_safe(_safe_df(s, "weather_data"), out_dir / "weather.parquet")
+
+        info = {
+            "year": year,
+            "round": round_no,
+            "code": code,
+            "session_name": str(getattr(s, "name", "") or ""),
+            "event_name": event_name,
+            "event_date": event_date,
+            "session_date": str(s.date) if getattr(s, "date", None) is not None else "",
+            "total_laps": int(getattr(s, "total_laps", 0) or 0),
+            "n_results": n_results,
+            "n_laps": n_laps,
+            "n_weather": n_weather,
+        }
+        (out_dir / "session_info.json").write_text(json.dumps(info, indent=2))
     except Exception as e:
         err = {"year": year, "round": round_no, "code": code, "error": str(e)[:300]}
         (out_dir / "session_info.json").write_text(json.dumps(err, indent=2))
         print(f"[fastf1] {year} R{round_no:02d} {code} - UNAVAILABLE ({str(e)[:80]})")
         return False
 
-    event_name = ""
-    event_date = ""
-    if hasattr(s, "event") and s.event is not None:
-        event_name = str(s.event.get("EventName", "") or "")
-        event_date = str(s.event.get("EventDate", "") or "")
-
-    info = {
-        "year": year,
-        "round": round_no,
-        "code": code,
-        "session_name": str(getattr(s, "name", "") or ""),
-        "event_name": event_name,
-        "event_date": event_date,
-        "session_date": str(s.date) if getattr(s, "date", None) is not None else "",
-        "total_laps": int(getattr(s, "total_laps", 0) or 0),
-    }
-
-    n_results = _write_parquet_safe(s.results, out_dir / "results.parquet")
-    n_laps = _write_parquet_safe(s.laps, out_dir / "laps.parquet")
-    n_weather = _write_parquet_safe(s.weather_data, out_dir / "weather.parquet")
-
-    info["n_results"] = n_results
-    info["n_laps"] = n_laps
-    info["n_weather"] = n_weather
-    (out_dir / "session_info.json").write_text(json.dumps(info, indent=2))
-
+    tag = "OK" if n_laps > 0 or n_results > 0 else "EMPTY"
     print(
-        f"[fastf1] {year} R{round_no:02d} {code} - OK "
+        f"[fastf1] {year} R{round_no:02d} {code} - {tag} "
         f"({n_results} drivers, {n_laps} laps, {n_weather} wx)"
     )
     return True
