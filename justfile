@@ -123,10 +123,17 @@ tune-mvp TRIALS="50":
 final-eval:
     uv run python -m src.models.final_eval run
 
-# --- Phase 1 placeholders (filled later) ---
+# --- Phase 1.2 Feature table (L2 processed -> L3 model-ready) ---
 
+# Build the rich MVP feature table -> data/features/mvp.parquet
 build:
-    @echo "Not implemented yet (Phase 1): build full feature table"
+    uv run python -m src.features.build build
+
+# Print summary of the current MVP feature table
+show-features:
+    uv run python -m src.features.build show
+
+# --- Phase 1 placeholders (filled later) ---
 
 train:
     @echo "Not implemented yet (Phase 1): train MVP models"

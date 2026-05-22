@@ -1,0 +1,34 @@
+track_id,circuit_id,track_name,length_km,n_corners,n_drs_zones,track_type
+albert_park,albert_park,Albert Park Circuit,5.278,14,4,street
+americas,americas,Circuit of the Americas,5.513,20,2,permanent
+bahrain,bahrain,Bahrain International Circuit,5.412,15,3,permanent
+bahrain_outer,bahrain,Bahrain Outer Circuit,3.543,11,2,permanent
+baku,baku,Baku City Circuit,6.003,20,2,street
+catalunya,catalunya,Circuit de Barcelona-Catalunya,4.657,14,2,permanent
+hockenheimring,hockenheimring,Hockenheimring,4.574,17,2,permanent
+hungaroring,hungaroring,Hungaroring,4.381,14,2,permanent
+imola,imola,Autodromo Enzo e Dino Ferrari,4.909,19,2,permanent
+interlagos,interlagos,Autodromo Jose Carlos Pace,4.309,15,2,permanent
+istanbul,istanbul,Istanbul Park,5.338,14,2,permanent
+jeddah,jeddah,Jeddah Corniche Circuit,6.174,27,3,street
+losail,losail,Losail International Circuit,5.380,16,1,permanent
+madring,madring,Madring,5.470,22,2,street
+marina_bay,marina_bay,Marina Bay Street Circuit,4.940,19,3,street
+miami,miami,Miami International Autodrome,5.412,19,3,street
+monaco,monaco,Circuit de Monaco,3.337,19,1,street
+monza,monza,Autodromo Nazionale di Monza,5.793,11,2,permanent
+mugello,mugello,Autodromo Internazionale del Mugello,5.245,15,2,permanent
+nurburgring,nurburgring,Nurburgring,5.148,15,1,permanent
+portimao,portimao,Autodromo Internacional do Algarve,4.653,15,2,permanent
+red_bull_ring,red_bull_ring,Red Bull Ring,4.318,10,3,permanent
+ricard,ricard,Circuit Paul Ricard,5.842,15,2,permanent
+rodriguez,rodriguez,Autodromo Hermanos Rodriguez,4.304,17,3,permanent
+shanghai,shanghai,Shanghai International Circuit,5.451,16,2,permanent
+silverstone,silverstone,Silverstone Circuit,5.891,18,2,permanent
+sochi,sochi,Sochi Autodrom,5.848,18,2,street
+spa,spa,Circuit de Spa-Francorchamps,7.004,19,2,permanent
+suzuka,suzuka,Suzuka Circuit,5.807,18,1,permanent
+vegas,vegas,Las Vegas Strip Circuit,6.201,17,2,street
+villeneuve,villeneuve,Circuit Gilles Villeneuve,4.361,14,3,permanent
+yas_marina,yas_marina,Yas Marina Circuit,5.281,16,2,permanent
+zandvoort,zandvoort,Circuit Park Zandvoort,4.259,14,2,permanent

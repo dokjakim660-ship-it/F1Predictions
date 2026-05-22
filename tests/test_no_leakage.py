@@ -7,11 +7,10 @@ Two layers:
   before any feature engineering touches the data; if a "future" race already
   has a results row, something upstream (ingest, schedule) is wrong.
 
-- L3 (features/) -- the rolling-feature, weather, and driver/team-switch
-  leakage tests are stubbed below and will be implemented once
-  src/features/build.py exists. See project_feature_decisions.md for the
-  three known traps (roll without .shift(1), race weather vs forecast,
-  driver/team historic mixup).
+- L3 (features/) -- mvp.parquet guards for the three known traps from
+  project_feature_decisions.md: a rolling feature built without .shift(1),
+  actual race weather used in place of a forecast, and team history keyed on
+  the driver instead of the constructor.
 """
 
 from __future__ import annotations
@@ -21,6 +20,7 @@ from datetime import date
 import pandas as pd
 import pytest
 
+from src.features.build import _DNF_POSITION_PROXY, FEATURE_COLUMNS, FEATURES_PARQUET
 from src.process.fastf1 import SESSIONS_PARQUET
 from src.process.jolpica import RESULTS_PARQUET
 from src.process.openmeteo import WEATHER_PARQUET
@@ -76,20 +76,64 @@ def test_processed_race_ids_are_subset_of_inventory() -> None:
 
 
 # ---------------------------------------------------------------------------
-# L3 (features/) -- placeholders, fill once src/features/build.py exists
+# L3 (features/) -- mvp.parquet leakage guards
 # ---------------------------------------------------------------------------
 
 
-@pytest.mark.skip(reason="Phase 1.2: implement once src/features/build.py exists")
+def _load_features_or_skip() -> pd.DataFrame:
+    if not FEATURES_PARQUET.exists():
+        pytest.skip(f"{FEATURES_PARQUET.name} not built yet -- run `just build`")
+    return pd.read_parquet(FEATURES_PARQUET)
+
+
 def test_rolling_features_have_no_lookahead() -> None:
-    raise NotImplementedError
+    """A .shift(1) rolling feature at race N must use only races strictly < N.
+
+    driver_form_finish_l5 is re-derived from the table's own outcome columns
+    and must match. A missing .shift(1) -- the classic lookahead bug -- folds
+    race N's own finish into its feature and breaks this equality.
+    """
+    df = _load_features_or_skip().sort_values(["driver_id", "year", "round"])
+    proxy = df["finish_position"].where(~df["dnf"], _DNF_POSITION_PROXY).astype(float)
+    expected = proxy.groupby(df["driver_id"], sort=False).transform(
+        lambda x: x.rolling(5, min_periods=1).mean().shift(1)
+    )
+    pd.testing.assert_series_equal(
+        df["driver_form_finish_l5"].reset_index(drop=True),
+        expected.reset_index(drop=True),
+        check_names=False,
+    )
+    # Structural cross-check: each driver's first-ever race has no prior history.
+    first_race = df.groupby("driver_id", sort=False).head(1)
+    assert first_race["driver_form_finish_l5"].isna().all()
+    assert first_race["driver_form_finish_l10"].isna().all()
+    assert (first_race["driver_career_races"] == 0).all()
 
 
-@pytest.mark.skip(reason="Phase 1.2: implement once weather features exist")
 def test_pre_race_uses_forecast_not_actual_weather() -> None:
-    raise NotImplementedError
+    """The MVP feature set carries no actual-weather columns.
+
+    Only race-hour *actuals* exist in weather.parquet; using them in a pre-race
+    model would leak. Weather is deferred until a forecast ingest exists -- this
+    guard fails loudly if a weather_* feature is added to the set before then.
+    """
+    leaked = [c for c in FEATURE_COLUMNS if c.startswith("weather_")]
+    assert not leaked, f"actual-weather features leaked into the MVP set: {leaked}"
 
 
-@pytest.mark.skip(reason="Phase 1.2: implement once team features exist")
 def test_team_features_follow_team_not_driver_after_switch() -> None:
-    raise NotImplementedError
+    """team_form_* is keyed on the constructor, not the driver.
+
+    Both cars of one constructor in one race must carry identical team_form
+    values -- the feature travels with the car. That is exactly what lets a
+    driver who switches teams inherit the new team's history, not their own.
+    """
+    df = _load_features_or_skip()
+    team_cols = [c for c in FEATURE_COLUMNS if c.startswith("team_form_")]
+    assert team_cols, "expected team_form_* features in FEATURE_COLUMNS"
+    per_team_race = df.groupby(["race_id", "constructor_id"])[team_cols].nunique(dropna=False)
+    inconsistent = per_team_race[per_team_race.gt(1).any(axis=1)]
+    assert inconsistent.empty, (
+        f"team_form_* varies between team-mates in {len(inconsistent)} constructor-races "
+        f"(feature is keyed on the driver, not the team):\n{inconsistent.head()}"
+    )
