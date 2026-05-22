@@ -133,6 +133,12 @@ build:
 show-features:
     uv run python -m src.features.build show
 
+# --- Phase 2 Streamlit app ---
+
+# Run the Streamlit app locally (browser opens automatically).
+app:
+    uv run --group app streamlit run app/streamlit_app.py
+
 # --- Phase 1 placeholders (filled later) ---
 
 train:
