@@ -25,8 +25,7 @@ import xgboost as xgb
 from optuna.samplers import TPESampler
 
 from src.eval.walk_forward import FitPredictFn, evaluate, split_dev_test
-from src.features.baseline import load_features
-from src.models.mvp import FEATURE_COLUMNS, TARGET
+from src.models.mvp import TARGET, TREE_FEATURES, load_model_frame
 from src.utils.paths import OPTUNA_DB
 
 _RANDOM_STATE = 42
@@ -38,7 +37,9 @@ def _storage() -> str:
 
 
 def _study_name(model: str) -> str:
-    return f"podium_{model}"
+    # _v2 marks the Phase 1.2 feature-set bump (baseline-9 -> rich table): a
+    # fresh study name keeps the old skeleton trials from polluting the search.
+    return f"podium_{model}_v2"
 
 
 def _existing_studies() -> set[str]:
@@ -79,11 +80,12 @@ def make_xgb_fit_predict(params: dict) -> FitPredictFn:
         model = xgb.XGBClassifier(
             **params,
             eval_metric="logloss",
+            enable_categorical=True,
             random_state=_RANDOM_STATE,
             n_jobs=-1,
         )
-        model.fit(train[FEATURE_COLUMNS], train[TARGET].astype(int))
-        return model.predict_proba(val[FEATURE_COLUMNS])[:, 1]
+        model.fit(train[TREE_FEATURES], train[TARGET].astype(int))
+        return model.predict_proba(val[TREE_FEATURES])[:, 1]
 
     return fit_predict
 
@@ -97,8 +99,9 @@ def make_lgbm_fit_predict(params: dict) -> FitPredictFn:
             n_jobs=-1,
             verbose=-1,
         )
-        model.fit(train[FEATURE_COLUMNS], train[TARGET].astype(int))
-        return model.predict_proba(val[FEATURE_COLUMNS])[:, 1]
+        # LightGBM auto-detects the pandas category column as a categorical feature.
+        model.fit(train[TREE_FEATURES], train[TARGET].astype(int))
+        return model.predict_proba(val[TREE_FEATURES])[:, 1]
 
     return fit_predict
 
@@ -121,7 +124,7 @@ def tune(model: str, n_trials: int) -> optuna.Study:
     OPTUNA_DB.parent.mkdir(parents=True, exist_ok=True)
     optuna.logging.set_verbosity(optuna.logging.WARNING)
 
-    df = load_features()
+    df = load_model_frame()
     dev, _ = split_dev_test(df)
 
     study = optuna.create_study(

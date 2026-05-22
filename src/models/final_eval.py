@@ -29,16 +29,15 @@ import pandas as pd
 from src.eval.calibration import IsotonicCalibrator, calibration_plot, ece
 from src.eval.metrics import brier, logloss, paired_bootstrap_brier_ci, top3_accuracy_per_race
 from src.eval.walk_forward import FitPredictFn, oof_predictions, split_dev_test
-from src.features.baseline import load_features
-from src.models.mvp import TARGET, constant_fit_predict, logreg_fit_predict
+from src.models.mvp import TARGET, constant_fit_predict, load_model_frame, logreg_fit_predict
 from src.models.tune import best_params, make_lgbm_fit_predict, make_xgb_fit_predict
 from src.utils.paths import MLRUNS_DIR, MODELS_DIR, PREDICTIONS_DIR
 
 MVP_TEST_PREDICTIONS = PREDICTIONS_DIR / "mvp_test.parquet"
 CHANGELOG_PATH = MODELS_DIR / "CHANGELOG.md"
-RELIABILITY_PLOT = MODELS_DIR / "reliability_mvp_baseline.png"
+RELIABILITY_PLOT = MODELS_DIR / "reliability_mvp.png"
 
-_EXPERIMENT = "mvp_podium_baseline_features"
+_EXPERIMENT = "mvp_podium"
 # Real models, ranked for the best-model pick (excludes the ConstantRate floor).
 _REAL_MODELS = ("LogisticRegression", "XGBoost", "LightGBM")
 
@@ -112,7 +111,7 @@ def _log_mlflow(evals: list[ModelEval], plot_path) -> None:
     for ev in evals:
         with mlflow.start_run(run_name=ev.name):
             mlflow.log_param("model", ev.name)
-            mlflow.log_param("feature_set", "baseline_9")
+            mlflow.log_param("feature_set", "rich_v1")
             if ev.params:
                 mlflow.log_params(ev.params)
             mlflow.log_metrics({f"test_{k}": v for k, v in ev.metrics.items()})
@@ -135,8 +134,8 @@ def _append_changelog(evals: list[ModelEval]) -> None:
     today = date.today().isoformat()
     rows = [
         f"| {today} | {ev.name} | {sha} | {ev.metrics['brier_raw']:.4f} "
-        f"| {ev.metrics['ece_raw']:.4f} | Phase 1.4 skeleton — baseline-9 feat, "
-        f"walk-forward+Optuna (raw probs) |"
+        f"| {ev.metrics['ece_raw']:.4f} | Phase 1.4 — rich feature table "
+        f"(31 num + track_id), walk-forward+Optuna (raw probs) |"
         for ev in evals
         if ev.name in _REAL_MODELS
     ]
@@ -199,12 +198,10 @@ def _print_report(test: pd.DataFrame, evals: list[ModelEval]) -> None:
 
 
 def run() -> int:
-    df = load_features()
+    df = load_model_frame()
     dev, test = split_dev_test(df)
     if dev.empty or test.empty:
-        print(
-            "[final_eval] empty dev/test split -- build baseline features first.", file=sys.stderr
-        )
+        print("[final_eval] empty dev/test split -- run `just build` first.", file=sys.stderr)
         return 1
 
     evals = [
