@@ -107,21 +107,21 @@ build-baseline-features:
 train-baseline: build-baseline-features
     uv run python -m src.models.baseline train
 
-# --- Phase 1.4 MVP model ---
+# --- Phase 1.4 MVP model (TARGET = podium | teammate) ---
 
 # Walk-forward Brier: XGBoost + LightGBM vs baselines (no tuning, no calibration)
-eval-mvp:
-    uv run python -m src.models.mvp evaluate
+eval-mvp TARGET="podium":
+    uv run python -m src.models.mvp evaluate --target {{TARGET}}
 
 # Optuna tuning for XGBoost + LightGBM on the walk-forward objective
-tune-mvp TRIALS="50":
-    uv run python -m src.models.tune xgboost --trials {{TRIALS}}
-    uv run python -m src.models.tune lightgbm --trials {{TRIALS}}
-    uv run python -m src.models.tune show
+tune-mvp TRIALS="50" TARGET="podium":
+    uv run python -m src.models.tune xgboost --trials {{TRIALS}} --target {{TARGET}}
+    uv run python -m src.models.tune lightgbm --trials {{TRIALS}} --target {{TARGET}}
+    uv run python -m src.models.tune show --target {{TARGET}}
 
 # Final eval on the holdout test set: calibration + MLflow + CHANGELOG (needs tune-mvp first)
-final-eval:
-    uv run python -m src.models.final_eval run
+final-eval TARGET="podium":
+    uv run python -m src.models.final_eval run --target {{TARGET}}
 
 # --- Phase 1.2 Feature table (L2 processed -> L3 model-ready) ---
 

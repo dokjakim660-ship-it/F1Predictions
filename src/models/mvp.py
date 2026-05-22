@@ -1,22 +1,27 @@
-"""MVP podium models: XGBoost + LightGBM on the rich L3 feature table.
+"""MVP models on the rich L3 feature table -- podium AND teammate H2H.
 
-Increment B of the Phase 1.4 pipeline, re-pointed in Phase 1.2 onto the full
-feature table (data/features/mvp.parquet -- 31 numeric features + track_id)
-instead of the nine thin baseline columns. This is the first honest "rich
-features vs. baseline" Brier comparison through the walk-forward harness.
+Increment B of the Phase 1.4 pipeline, parameterised in Phase 1.5 to drive
+both MVP targets through the same walk-forward harness and the same feature
+table (data/features/mvp.parquet -- 31 numeric features + track_id):
 
-No Optuna tuning (increment C) and no calibration (increment D) yet: models
+- target_podium       -- P(driver finishes P1-P3), imbalanced ~15%
+- target_beat_teammate -- P(driver finishes ahead of their constructor team-mate),
+                          balanced ~50%, NaN for the rare single-car or DNF-tie
+                          row (~0.6%) which prepare_dev_test drops upstream.
+
+No Optuna tuning (increment C) and no calibration (increment D) here: models
 use library defaults and natural class balance, so predict_proba stays roughly
 calibrated and Brier is a fair comparison. scale_pos_weight is deliberately
-left off here -- it improves ranking but inflates probabilities, which hurts
-Brier until the calibration layer lands.
+left off -- it helps ranking but inflates probabilities, which hurts Brier
+until the calibration layer lands.
 
 track_id is the one categorical feature: XGBoost and LightGBM consume it
 natively (pandas category dtype), while the LogisticRegression reference
 one-hot encodes it. NaN rolling features (rookies, no-FP2, first track visit)
 go to the tree models as-is; only the LogisticRegression needs imputation.
 
-Run: `python -m src.models.mvp evaluate`
+Run: `python -m src.models.mvp evaluate --target podium`
+     `python -m src.models.mvp evaluate --target teammate`
 """
 
 from __future__ import annotations
@@ -35,6 +40,7 @@ from src.eval.walk_forward import FitPredictFn, WalkForwardResult, evaluate, spl
 from src.features.build import (
     CATEGORICAL_COLUMNS,
     TARGET_PODIUM,
+    TARGET_TEAMMATE,
     load_features,
 )
 from src.features.build import FEATURE_COLUMNS as NUMERIC_FEATURES
@@ -42,13 +48,24 @@ from src.features.build import FEATURE_COLUMNS as NUMERIC_FEATURES
 # Numeric features go to every model; track_id (categorical) is appended for
 # the tree models, which handle it natively. LogReg one-hot encodes it instead.
 TREE_FEATURES = NUMERIC_FEATURES + CATEGORICAL_COLUMNS
+
+# CLI short names mapped to the actual target column. The short name flows end
+# to end -- study names, MLflow experiments, artefact filenames all use it.
+TARGETS: dict[str, str] = {
+    "podium": TARGET_PODIUM,
+    "teammate": TARGET_TEAMMATE,
+}
+DEFAULT_TARGET = "podium"
+
+# Back-compat alias for callers that still expect a single TARGET constant.
 TARGET = TARGET_PODIUM
 
 _RANDOM_STATE = 42
 
 # BaselineLogistic on the year-split test set (src/models/baseline.py). Rough
-# reference only -- not the same split as the walk-forward folds below.
-_BASELINE_TARGET = 0.0620
+# reference for the podium target only -- not the same split as the walk-forward
+# folds below, and meaningless for the teammate target.
+_PODIUM_BASELINE_TARGET = 0.0620
 
 
 def load_model_frame() -> pd.DataFrame:
@@ -63,8 +80,16 @@ def load_model_frame() -> pd.DataFrame:
     return df
 
 
-def constant_fit_predict(train: pd.DataFrame, val: pd.DataFrame) -> np.ndarray:
-    return np.full(len(val), float(train[TARGET].mean()))
+def prepare_dev_test(target_col: str) -> tuple[pd.DataFrame, pd.DataFrame]:
+    """Load the rich frame, drop NaN-target rows, return (dev, test).
+
+    target_beat_teammate is NaN for ~0.6 % of rows (single-car constructors,
+    same-lap DNF ties) -- no defined outcome, would corrupt training and
+    Brier. target_podium is never NaN, so this is a no-op there.
+    """
+    df = load_model_frame()
+    df = df[df[target_col].notna()].copy()
+    return split_dev_test(df)
 
 
 def _logreg_matrix(df: pd.DataFrame, medians: pd.Series) -> np.ndarray:
@@ -78,92 +103,143 @@ def _logreg_matrix(df: pd.DataFrame, medians: pd.Series) -> np.ndarray:
     return pd.concat([numeric, dummies], axis=1).to_numpy()
 
 
-def logreg_fit_predict(train: pd.DataFrame, val: pd.DataFrame) -> np.ndarray:
-    medians = train[NUMERIC_FEATURES].median(numeric_only=True)
-    x_train = _logreg_matrix(train, medians)
-    x_val = _logreg_matrix(val, medians)
-    scaler = StandardScaler().fit(x_train)
-    model = LogisticRegression(max_iter=1000).fit(
-        scaler.transform(x_train), train[TARGET].astype(int)
-    )
-    return model.predict_proba(scaler.transform(x_val))[:, 1]
+def make_constant_fit_predict(target_col: str = TARGET_PODIUM) -> FitPredictFn:
+    def fit_predict(train: pd.DataFrame, val: pd.DataFrame) -> np.ndarray:
+        return np.full(len(val), float(train[target_col].mean()))
+
+    return fit_predict
 
 
-def xgb_fit_predict(train: pd.DataFrame, val: pd.DataFrame) -> np.ndarray:
-    model = xgb.XGBClassifier(
-        n_estimators=300,
-        max_depth=4,
-        learning_rate=0.05,
-        subsample=0.8,
-        colsample_bytree=0.8,
-        eval_metric="logloss",
-        enable_categorical=True,
-        random_state=_RANDOM_STATE,
-        n_jobs=-1,
-    )
-    model.fit(train[TREE_FEATURES], train[TARGET].astype(int))
-    return model.predict_proba(val[TREE_FEATURES])[:, 1]
+def make_logreg_fit_predict(target_col: str = TARGET_PODIUM) -> FitPredictFn:
+    def fit_predict(train: pd.DataFrame, val: pd.DataFrame) -> np.ndarray:
+        medians = train[NUMERIC_FEATURES].median(numeric_only=True)
+        x_train = _logreg_matrix(train, medians)
+        x_val = _logreg_matrix(val, medians)
+        scaler = StandardScaler().fit(x_train)
+        model = LogisticRegression(max_iter=1000).fit(
+            scaler.transform(x_train), train[target_col].astype(int)
+        )
+        return model.predict_proba(scaler.transform(x_val))[:, 1]
+
+    return fit_predict
 
 
-def lgbm_fit_predict(train: pd.DataFrame, val: pd.DataFrame) -> np.ndarray:
-    model = lgb.LGBMClassifier(
-        n_estimators=300,
-        max_depth=4,
-        num_leaves=15,
-        learning_rate=0.05,
-        subsample=0.8,
-        subsample_freq=1,
-        colsample_bytree=0.8,
-        random_state=_RANDOM_STATE,
-        n_jobs=-1,
-        verbose=-1,
-    )
-    # LightGBM auto-detects the pandas category column as a categorical feature.
-    model.fit(train[TREE_FEATURES], train[TARGET].astype(int))
-    return model.predict_proba(val[TREE_FEATURES])[:, 1]
+_XGB_DEFAULT_PARAMS: dict = dict(
+    n_estimators=300,
+    max_depth=4,
+    learning_rate=0.05,
+    subsample=0.8,
+    colsample_bytree=0.8,
+)
 
 
-_MODELS: dict[str, FitPredictFn] = {
-    "ConstantRate": constant_fit_predict,
-    "LogisticRegression": logreg_fit_predict,
-    "XGBoost": xgb_fit_predict,
-    "LightGBM": lgbm_fit_predict,
-}
+def make_default_xgb_fit_predict(target_col: str = TARGET_PODIUM) -> FitPredictFn:
+    def fit_predict(train: pd.DataFrame, val: pd.DataFrame) -> np.ndarray:
+        model = xgb.XGBClassifier(
+            **_XGB_DEFAULT_PARAMS,
+            eval_metric="logloss",
+            enable_categorical=True,
+            random_state=_RANDOM_STATE,
+            n_jobs=-1,
+        )
+        model.fit(train[TREE_FEATURES], train[target_col].astype(int))
+        return model.predict_proba(val[TREE_FEATURES])[:, 1]
+
+    return fit_predict
 
 
-def evaluate_all(dev: pd.DataFrame) -> list[tuple[str, WalkForwardResult]]:
-    return [(name, evaluate(dev, fn)) for name, fn in _MODELS.items()]
+_LGBM_DEFAULT_PARAMS: dict = dict(
+    n_estimators=300,
+    max_depth=4,
+    num_leaves=15,
+    learning_rate=0.05,
+    subsample=0.8,
+    subsample_freq=1,
+    colsample_bytree=0.8,
+)
 
 
-def _print_results(dev: pd.DataFrame, results: list[tuple[str, WalkForwardResult]]) -> None:
+def make_default_lgbm_fit_predict(target_col: str = TARGET_PODIUM) -> FitPredictFn:
+    def fit_predict(train: pd.DataFrame, val: pd.DataFrame) -> np.ndarray:
+        model = lgb.LGBMClassifier(
+            **_LGBM_DEFAULT_PARAMS,
+            random_state=_RANDOM_STATE,
+            n_jobs=-1,
+            verbose=-1,
+        )
+        # LightGBM auto-detects the pandas category column as a categorical feature.
+        model.fit(train[TREE_FEATURES], train[target_col].astype(int))
+        return model.predict_proba(val[TREE_FEATURES])[:, 1]
+
+    return fit_predict
+
+
+# Back-compat default-target bindings: final_eval imports these by name.
+constant_fit_predict: FitPredictFn = make_constant_fit_predict(TARGET_PODIUM)
+logreg_fit_predict: FitPredictFn = make_logreg_fit_predict(TARGET_PODIUM)
+xgb_fit_predict: FitPredictFn = make_default_xgb_fit_predict(TARGET_PODIUM)
+lgbm_fit_predict: FitPredictFn = make_default_lgbm_fit_predict(TARGET_PODIUM)
+
+
+def models_for(target_col: str) -> dict[str, FitPredictFn]:
+    return {
+        "ConstantRate": make_constant_fit_predict(target_col),
+        "LogisticRegression": make_logreg_fit_predict(target_col),
+        "XGBoost": make_default_xgb_fit_predict(target_col),
+        "LightGBM": make_default_lgbm_fit_predict(target_col),
+    }
+
+
+def evaluate_all(
+    dev: pd.DataFrame, target_col: str = TARGET_PODIUM
+) -> list[tuple[str, WalkForwardResult]]:
+    return [
+        (name, evaluate(dev, fn, target_col=target_col))
+        for name, fn in models_for(target_col).items()
+    ]
+
+
+def _print_results(
+    dev: pd.DataFrame,
+    results: list[tuple[str, WalkForwardResult]],
+    target_short: str,
+) -> None:
     print()
-    print("=" * 92)
+    print("=" * 95)
     print(
-        f"MVP models -- walk-forward Brier  |  dev set: {len(dev)} rows, "
-        f"4 folds 2018..2024-06  |  {len(TREE_FEATURES)} features"
+        f"MVP models ({target_short}) -- walk-forward Brier  |  "
+        f"dev: {len(dev)} rows, 4 folds 2018..2024-06  |  {len(TREE_FEATURES)} features"
     )
-    print("=" * 92)
+    print("=" * 95)
     for name, res in results:
         per_fold = " ".join(f"{b:.4f}" for b in res.fold_briers)
         print(
             f"{name:<20s}  folds[{per_fold}]  "
             f"mean={res.mean_brier:.4f}  std={res.std_brier:.4f}  obj={res.objective:.4f}"
         )
-    print("=" * 92)
-    print(f"Reference: BaselineLogistic (year-split test) brier {_BASELINE_TARGET:.4f}")
+    print("=" * 95)
+    if target_short == "podium":
+        print(f"Reference: BaselineLogistic (year-split test) brier {_PODIUM_BASELINE_TARGET:.4f}")
     print("Lower brier/obj = better. obj = mean + 0.2*std across folds.")
 
 
 def main(argv: list[str] | None = None) -> int:
     p = argparse.ArgumentParser(description=__doc__)
     sub = p.add_subparsers(dest="cmd", required=True)
-    sub.add_parser("evaluate", help="Walk-forward Brier for all MVP models vs baselines.")
+    ev = sub.add_parser("evaluate", help="Walk-forward Brier for all MVP models vs baselines.")
+    ev.add_argument(
+        "--target",
+        choices=tuple(TARGETS),
+        default=DEFAULT_TARGET,
+        help=f"Which target to model (default: {DEFAULT_TARGET}).",
+    )
     args = p.parse_args(argv)
 
     if args.cmd == "evaluate":
-        dev, _ = split_dev_test(load_model_frame())
-        results = evaluate_all(dev)
-        _print_results(dev, results)
+        target_col = TARGETS[args.target]
+        dev, _ = prepare_dev_test(target_col)
+        results = evaluate_all(dev, target_col=target_col)
+        _print_results(dev, results, args.target)
         return 0
     return 0
 
