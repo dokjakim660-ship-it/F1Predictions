@@ -110,6 +110,31 @@ def make_constant_fit_predict(target_col: str = TARGET_PODIUM) -> FitPredictFn:
     return fit_predict
 
 
+def make_top3_quali_fit_predict(target_col: str = TARGET_PODIUM) -> FitPredictFn:
+    """The "Top-3-Quali = Podium" F1-domain baseline (PLANNING.md §6, §10).
+
+    Probabilistic version: predict P(target | is_top3_grid), estimated as the
+    empirical rate on the train slice. Brier-comparable -- a hard deterministic
+    1/0 prediction would blow up Brier on every misclassified row.
+    """
+
+    def fit_predict(train: pd.DataFrame, val: pd.DataFrame) -> np.ndarray:
+        top3_mask = train["is_top3_grid"] == 1
+        top3_rate = (
+            float(train.loc[top3_mask, target_col].mean())
+            if top3_mask.any()
+            else float(train[target_col].mean())
+        )
+        rest_rate = (
+            float(train.loc[~top3_mask, target_col].mean())
+            if (~top3_mask).any()
+            else float(train[target_col].mean())
+        )
+        return np.where(val["is_top3_grid"] == 1, top3_rate, rest_rate)
+
+    return fit_predict
+
+
 def make_logreg_fit_predict(target_col: str = TARGET_PODIUM) -> FitPredictFn:
     def fit_predict(train: pd.DataFrame, val: pd.DataFrame) -> np.ndarray:
         medians = train[NUMERIC_FEATURES].median(numeric_only=True)

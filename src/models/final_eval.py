@@ -37,6 +37,7 @@ from src.models.mvp import (
     TARGETS,
     make_constant_fit_predict,
     make_logreg_fit_predict,
+    make_top3_quali_fit_predict,
     prepare_dev_test,
 )
 from src.models.tune import best_params, make_lgbm_fit_predict, make_xgb_fit_predict
@@ -75,12 +76,18 @@ def _model_specs(target_col: str, target_short: str) -> list[tuple[str, FitPredi
     """Name, fit_predict closure, and hyperparameters for each MVP model."""
     xgb_params = best_params("xgboost", target_short)
     lgbm_params = best_params("lightgbm", target_short)
-    return [
+    specs: list[tuple[str, FitPredictFn, dict]] = [
         ("ConstantRate", make_constant_fit_predict(target_col), {}),
         ("LogisticRegression", make_logreg_fit_predict(target_col), {}),
         ("XGBoost", make_xgb_fit_predict(xgb_params, target_col), xgb_params),
         ("LightGBM", make_lgbm_fit_predict(lgbm_params, target_col), lgbm_params),
     ]
+    # The Top-3-Quali baseline (PLANNING.md §10 success criterion) only makes
+    # sense for the podium target -- "top-3 grid" has no analogue for the
+    # teammate H2H, where both team-mates start adjacent grid slots anyway.
+    if target_short == "podium":
+        specs.insert(1, ("Top3Quali", make_top3_quali_fit_predict(target_col), {}))
+    return specs
 
 
 def _evaluate_model(
@@ -250,6 +257,22 @@ def _print_report(
     verdict = "significant at 95%" if hi < 0 else "NOT significant (CI straddles 0)"
     print(f"Paired bootstrap (1000x, races resampled): Brier({best}) - Brier({second}), raw probs")
     print(f"  95% CI [{lo:+.4f}, {hi:+.4f}]  ->  {verdict}")
+
+    # Phase 1 success criterion (PLANNING.md §10): the best real model must
+    # beat the "Top-3-Quali = Podium" F1-domain baseline on the holdout test.
+    if "Top3Quali" in by_name:
+        bl_lo, bl_hi = paired_bootstrap_brier_ci(
+            test["race_id"], y_true, by_name[best].raw_prob, by_name["Top3Quali"].raw_prob
+        )
+        bl_diff = by_name[best].metrics["brier_raw"] - by_name["Top3Quali"].metrics["brier_raw"]
+        if bl_hi < 0:
+            bl_verdict = "Phase 1 success criterion MET (best model beats baseline at 95%)"
+        elif bl_diff < 0:
+            bl_verdict = "best model is ahead but NOT significant at 95% (CI straddles 0)"
+        else:
+            bl_verdict = "Phase 1 success criterion FAILED (best model does NOT beat baseline)"
+        print(f"Paired bootstrap: Brier({best}) - Brier(Top3Quali), raw probs")
+        print(f"  95% CI [{bl_lo:+.4f}, {bl_hi:+.4f}]  (mean diff {bl_diff:+.4f})  ->  {bl_verdict}")
 
     helped = [
         n for n in _REAL_MODELS if by_name[n].metrics["brier_cal"] < by_name[n].metrics["brier_raw"]
