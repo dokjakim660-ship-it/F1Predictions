@@ -45,7 +45,9 @@ from src.utils.paths import MLRUNS_DIR, MODELS_DIR, PREDICTIONS_DIR
 CHANGELOG_PATH = MODELS_DIR / "CHANGELOG.md"
 
 # Real models, ranked for the best-model pick (excludes the ConstantRate floor).
-_REAL_MODELS = ("LogisticRegression", "XGBoost", "LightGBM")
+# The Ensemble is XGB+LGBM averaged after calibration -- added in run() once
+# the base evals exist; carried here so it shows in the CHANGELOG and plot.
+_REAL_MODELS = ("LogisticRegression", "XGBoost", "LightGBM", "Ensemble")
 
 
 def _reliability_plot_path(target_short: str) -> Path:
@@ -114,6 +116,33 @@ def _evaluate_model(
     )
 
 
+def _build_ensemble(
+    xgb_ev: ModelEval,
+    lgbm_ev: ModelEval,
+    y_true: np.ndarray,
+    race_ids: pd.Series,
+) -> ModelEval:
+    """Equal-weight blend of XGB + LGBM. Trees were tied within bootstrap noise
+    on the dev set, so the textbook follow-up is to average them and check if
+    decorrelated errors buy a bit of headroom on the holdout.
+    """
+    raw_prob = (xgb_ev.raw_prob + lgbm_ev.raw_prob) / 2.0
+    cal_prob = (xgb_ev.cal_prob + lgbm_ev.cal_prob) / 2.0
+    metrics = {
+        "brier_raw": brier(y_true, raw_prob),
+        "brier_cal": brier(y_true, cal_prob),
+        "logloss_raw": logloss(y_true, raw_prob),
+        "logloss_cal": logloss(y_true, cal_prob),
+        "ece_raw": ece(y_true, raw_prob),
+        "ece_cal": ece(y_true, cal_prob),
+        "top3_raw": top3_accuracy_per_race(race_ids, y_true, raw_prob),
+        "top3_cal": top3_accuracy_per_race(race_ids, y_true, cal_prob),
+    }
+    return ModelEval(
+        name="Ensemble", raw_prob=raw_prob, cal_prob=cal_prob, metrics=metrics, params={}
+    )
+
+
 def _save_predictions(
     test: pd.DataFrame, evals: list[ModelEval], target_col: str, target_short: str
 ) -> Path:
@@ -157,17 +186,26 @@ def _append_changelog(evals: list[ModelEval], target_short: str) -> None:
     sha = _git_sha()
     today = date.today().isoformat()
     note = f"Phase 1.4 — rich features ({target_short}), walk-forward+Optuna (raw probs)"
-    rows = [
-        f"| {today} | {ev.name} | {sha} | {ev.metrics['brier_raw']:.4f} "
-        f"| {ev.metrics['ece_raw']:.4f} | {note} |"
-        for ev in evals
-        if ev.name in _REAL_MODELS
-    ]
-    lines = [
-        ln
-        for ln in CHANGELOG_PATH.read_text(encoding="utf-8").splitlines()
-        if "_no models yet_" not in ln
-    ]
+    existing = CHANGELOG_PATH.read_text(encoding="utf-8")
+    target_marker = f"({target_short})"
+
+    rows: list[str] = []
+    for ev in evals:
+        if ev.name not in _REAL_MODELS:
+            continue
+        # Dedupe: if a row dated today already names this model AND target, this
+        # is a same-day re-run -- skip to keep the changelog readable.
+        row_prefix = f"| {today} | {ev.name} |"
+        if any(row_prefix in ln and target_marker in ln for ln in existing.splitlines()):
+            continue
+        rows.append(
+            f"| {today} | {ev.name} | {sha} | {ev.metrics['brier_raw']:.4f} "
+            f"| {ev.metrics['ece_raw']:.4f} | {note} |"
+        )
+    if not rows:
+        return
+
+    lines = [ln for ln in existing.splitlines() if "_no models yet_" not in ln]
     table_rows = [i for i, ln in enumerate(lines) if ln.lstrip().startswith("|")]
     insert_at = table_rows[-1] + 1
     lines[insert_at:insert_at] = rows
@@ -244,6 +282,8 @@ def run(target_short: str = DEFAULT_TARGET) -> int:
     ]
 
     y_true = test[target_col].astype(int).to_numpy()
+    by_name = {ev.name: ev for ev in evals}
+    evals.append(_build_ensemble(by_name["XGBoost"], by_name["LightGBM"], y_true, test["race_id"]))
     curves = {f"{ev.name} (cal)": (y_true, ev.cal_prob) for ev in evals if ev.name in _REAL_MODELS}
     plot_path = calibration_plot(curves, _reliability_plot_path(target_short))
 
