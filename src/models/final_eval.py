@@ -1,0 +1,238 @@
+"""Final MVP evaluation on the sealed holdout test set (increment D).
+
+Trains the MVP model set on the full dev set, calibrates each with isotonic
+regression fitted on leak-free out-of-fold predictions, and scores raw vs.
+calibrated probabilities on the holdout test set (races 2024-07-01 onward).
+ConstantRate and the logistic baseline are scored on the same split, so every
+number in the final table is directly comparable.
+
+Outputs:
+- one MLflow run per model (params + test metrics + reliability plot)
+- predictions/mvp_test.parquet  (per-row test predictions, every model)
+- a models/CHANGELOG.md row per real model
+
+Run: `python -m src.models.final_eval run`
+"""
+
+from __future__ import annotations
+
+import argparse
+import subprocess
+import sys
+from dataclasses import dataclass, field
+from datetime import date
+
+import mlflow
+import numpy as np
+import pandas as pd
+
+from src.eval.calibration import IsotonicCalibrator, calibration_plot, ece
+from src.eval.metrics import brier, logloss, paired_bootstrap_brier_ci, top3_accuracy_per_race
+from src.eval.walk_forward import FitPredictFn, oof_predictions, split_dev_test
+from src.features.baseline import load_features
+from src.models.mvp import TARGET, constant_fit_predict, logreg_fit_predict
+from src.models.tune import best_params, make_lgbm_fit_predict, make_xgb_fit_predict
+from src.utils.paths import MLRUNS_DIR, MODELS_DIR, PREDICTIONS_DIR
+
+MVP_TEST_PREDICTIONS = PREDICTIONS_DIR / "mvp_test.parquet"
+CHANGELOG_PATH = MODELS_DIR / "CHANGELOG.md"
+RELIABILITY_PLOT = MODELS_DIR / "reliability_mvp_baseline.png"
+
+_EXPERIMENT = "mvp_podium_baseline_features"
+# Real models, ranked for the best-model pick (excludes the ConstantRate floor).
+_REAL_MODELS = ("LogisticRegression", "XGBoost", "LightGBM")
+
+
+@dataclass
+class ModelEval:
+    name: str
+    raw_prob: np.ndarray
+    cal_prob: np.ndarray
+    metrics: dict[str, float]
+    params: dict = field(default_factory=dict)
+
+
+def _model_specs() -> list[tuple[str, FitPredictFn, dict]]:
+    """Name, fit_predict closure, and hyperparameters for each MVP model."""
+    xgb_params = best_params("xgboost")
+    lgbm_params = best_params("lightgbm")
+    return [
+        ("ConstantRate", constant_fit_predict, {}),
+        ("LogisticRegression", logreg_fit_predict, {}),
+        ("XGBoost", make_xgb_fit_predict(xgb_params), xgb_params),
+        ("LightGBM", make_lgbm_fit_predict(lgbm_params), lgbm_params),
+    ]
+
+
+def _evaluate_model(
+    name: str,
+    fit_predict: FitPredictFn,
+    params: dict,
+    dev: pd.DataFrame,
+    test: pd.DataFrame,
+) -> ModelEval:
+    # Final model trains on the full dev set and scores the holdout test set.
+    raw_prob = np.asarray(fit_predict(dev, test), dtype=float)
+
+    # Isotonic calibrator is fitted on leak-free out-of-fold dev predictions.
+    oof = oof_predictions(dev, fit_predict)
+    calibrator = IsotonicCalibrator.fit(oof.y_prob, oof.y_true)
+    cal_prob = calibrator.transform(raw_prob)
+
+    y_true = test[TARGET].astype(int).to_numpy()
+    race_ids = test["race_id"]
+    metrics = {
+        "brier_raw": brier(y_true, raw_prob),
+        "brier_cal": brier(y_true, cal_prob),
+        "logloss_raw": logloss(y_true, raw_prob),
+        "logloss_cal": logloss(y_true, cal_prob),
+        "ece_raw": ece(y_true, raw_prob),
+        "ece_cal": ece(y_true, cal_prob),
+        "top3_raw": top3_accuracy_per_race(race_ids, y_true, raw_prob),
+        "top3_cal": top3_accuracy_per_race(race_ids, y_true, cal_prob),
+    }
+    return ModelEval(
+        name=name, raw_prob=raw_prob, cal_prob=cal_prob, metrics=metrics, params=params
+    )
+
+
+def _save_predictions(test: pd.DataFrame, evals: list[ModelEval]) -> None:
+    out = test[["race_id", "year", "round", "driver_id", TARGET]].copy()
+    for ev in evals:
+        key = ev.name.lower()
+        out[f"prob_{key}_raw"] = ev.raw_prob
+        out[f"prob_{key}_cal"] = ev.cal_prob
+    MVP_TEST_PREDICTIONS.parent.mkdir(parents=True, exist_ok=True)
+    out.to_parquet(MVP_TEST_PREDICTIONS, index=False)
+
+
+def _log_mlflow(evals: list[ModelEval], plot_path) -> None:
+    mlflow.set_tracking_uri(MLRUNS_DIR.as_uri())
+    mlflow.set_experiment(_EXPERIMENT)
+    for ev in evals:
+        with mlflow.start_run(run_name=ev.name):
+            mlflow.log_param("model", ev.name)
+            mlflow.log_param("feature_set", "baseline_9")
+            if ev.params:
+                mlflow.log_params(ev.params)
+            mlflow.log_metrics({f"test_{k}": v for k, v in ev.metrics.items()})
+            if plot_path.exists():
+                mlflow.log_artifact(str(plot_path))
+
+
+def _git_sha() -> str:
+    try:
+        out = subprocess.check_output(["git", "rev-parse", "--short", "HEAD"], text=True)
+        return out.strip()
+    except (subprocess.SubprocessError, OSError):
+        return "unknown"
+
+
+def _append_changelog(evals: list[ModelEval]) -> None:
+    if not CHANGELOG_PATH.exists():
+        return
+    sha = _git_sha()
+    today = date.today().isoformat()
+    rows = [
+        f"| {today} | {ev.name} | {sha} | {ev.metrics['brier_raw']:.4f} "
+        f"| {ev.metrics['ece_raw']:.4f} | Phase 1.4 skeleton — baseline-9 feat, "
+        f"walk-forward+Optuna (raw probs) |"
+        for ev in evals
+        if ev.name in _REAL_MODELS
+    ]
+    # Drop the "no models yet" placeholder, then splice new rows in after the
+    # last existing table row -- keeps the markdown blank lines intact.
+    lines = [
+        ln
+        for ln in CHANGELOG_PATH.read_text(encoding="utf-8").splitlines()
+        if "_no models yet_" not in ln
+    ]
+    table_rows = [i for i, ln in enumerate(lines) if ln.lstrip().startswith("|")]
+    insert_at = table_rows[-1] + 1
+    lines[insert_at:insert_at] = rows
+    CHANGELOG_PATH.write_text("\n".join(lines).rstrip() + "\n", encoding="utf-8")
+
+
+def _print_report(test: pd.DataFrame, evals: list[ModelEval]) -> None:
+    by_name = {ev.name: ev for ev in evals}
+    print()
+    print("=" * 95)
+    print(
+        f"Final MVP evaluation -- holdout test set (2024-07-01 onward): "
+        f"{len(test)} rows, {test['race_id'].nunique()} races"
+    )
+    print("=" * 95)
+    print(
+        f"{'model':<20s}  {'brier_raw':>9s}  {'brier_cal':>9s}  {'ece_raw':>7s}  "
+        f"{'ece_cal':>7s}  {'logloss_cal':>11s}  {'top3_cal':>8s}"
+    )
+    print("-" * 95)
+    for ev in evals:
+        m = ev.metrics
+        print(
+            f"{ev.name:<20s}  {m['brier_raw']:>9.4f}  {m['brier_cal']:>9.4f}  "
+            f"{m['ece_raw']:>7.4f}  {m['ece_cal']:>7.4f}  {m['logloss_cal']:>11.4f}  "
+            f"{m['top3_cal']:>8.3f}"
+        )
+    print("=" * 95)
+
+    ranked = sorted(_REAL_MODELS, key=lambda n: by_name[n].metrics["brier_raw"])
+    best, second = ranked[0], ranked[1]
+    y_true = test[TARGET].astype(int).to_numpy()
+    lo, hi = paired_bootstrap_brier_ci(
+        test["race_id"], y_true, by_name[best].raw_prob, by_name[second].raw_prob
+    )
+    verdict = "significant at 95%" if hi < 0 else "NOT significant (CI straddles 0)"
+    print(f"Paired bootstrap (1000x, races resampled): Brier({best}) - Brier({second}), raw probs")
+    print(f"  95% CI [{lo:+.4f}, {hi:+.4f}]  ->  {verdict}")
+
+    helped = [
+        n for n in _REAL_MODELS if by_name[n].metrics["brier_cal"] < by_name[n].metrics["brier_raw"]
+    ]
+    if helped:
+        print(f"Isotonic calibration lowered Brier for: {', '.join(helped)}")
+    else:
+        print("Isotonic calibration lowered Brier for no model -- raw probs already calibrated.")
+    print(f"Best model (raw Brier): {best} = {by_name[best].metrics['brier_raw']:.4f}")
+    print("Lower brier/ece/logloss = better; higher top3 = better.")
+    print(f"MLflow -> mlruns/   |   predictions -> {MVP_TEST_PREDICTIONS}")
+
+
+def run() -> int:
+    df = load_features()
+    dev, test = split_dev_test(df)
+    if dev.empty or test.empty:
+        print(
+            "[final_eval] empty dev/test split -- build baseline features first.", file=sys.stderr
+        )
+        return 1
+
+    evals = [
+        _evaluate_model(name, fit_predict, params, dev, test)
+        for name, fit_predict, params in _model_specs()
+    ]
+
+    y_true = test[TARGET].astype(int).to_numpy()
+    curves = {f"{ev.name} (cal)": (y_true, ev.cal_prob) for ev in evals if ev.name in _REAL_MODELS}
+    plot_path = calibration_plot(curves, RELIABILITY_PLOT)
+
+    _save_predictions(test, evals)
+    _log_mlflow(evals, plot_path)
+    _append_changelog(evals)
+    _print_report(test, evals)
+    return 0
+
+
+def main(argv: list[str] | None = None) -> int:
+    p = argparse.ArgumentParser(description=__doc__)
+    sub = p.add_subparsers(dest="cmd", required=True)
+    sub.add_parser("run", help="Train on dev, calibrate, evaluate on the holdout test set.")
+    args = p.parse_args(argv)
+
+    if args.cmd == "run":
+        return run()
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())

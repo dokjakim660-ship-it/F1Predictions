@@ -12,6 +12,9 @@ dist/
 # --- FastF1 Cache (NICHT im Repo, kann mehrere GB werden) ---
 data/raw/fastf1_cache/
 
+# --- Logs ---
+*.log
+
 # --- MLflow ---
 mlruns/
 mlartifacts/
