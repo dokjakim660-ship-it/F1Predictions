@@ -1,0 +1,13 @@
+{
+  "year": 2025,
+  "round": 3,
+  "code": "R",
+  "session_name": "Race",
+  "event_name": "Japanese Grand Prix",
+  "event_date": "2025-04-06 00:00:00",
+  "session_date": "2025-04-06 05:00:00",
+  "total_laps": 53,
+  "n_results": 20,
+  "n_laps": 1059,
+  "n_weather": 140
+}

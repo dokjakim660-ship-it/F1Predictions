@@ -1,0 +1,13 @@
+{
+  "year": 2021,
+  "round": 15,
+  "code": "R",
+  "session_name": "Race",
+  "event_name": "Russian Grand Prix",
+  "event_date": "2021-09-26 00:00:00",
+  "session_date": "2021-09-26 12:00:00",
+  "total_laps": 53,
+  "n_results": 20,
+  "n_laps": 1025,
+  "n_weather": 158
+}

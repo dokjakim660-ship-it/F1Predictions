@@ -1,0 +1,13 @@
+{
+  "year": 2024,
+  "round": 16,
+  "code": "R",
+  "session_name": "Race",
+  "event_name": "Italian Grand Prix",
+  "event_date": "2024-09-01 00:00:00",
+  "session_date": "2024-09-01 13:00:00",
+  "total_laps": 53,
+  "n_results": 20,
+  "n_laps": 1008,
+  "n_weather": 133
+}

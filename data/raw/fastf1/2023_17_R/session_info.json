@@ -1,0 +1,13 @@
+{
+  "year": 2023,
+  "round": 17,
+  "code": "R",
+  "session_name": "Race",
+  "event_name": "Qatar Grand Prix",
+  "event_date": "2023-10-08 00:00:00",
+  "session_date": "2023-10-08 17:00:00",
+  "total_laps": 57,
+  "n_results": 20,
+  "n_laps": 1006,
+  "n_weather": 159
+}

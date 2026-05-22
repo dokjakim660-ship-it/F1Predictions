@@ -1,0 +1,13 @@
+{
+  "year": 2025,
+  "round": 14,
+  "code": "R",
+  "session_name": "Race",
+  "event_name": "Hungarian Grand Prix",
+  "event_date": "2025-08-03 00:00:00",
+  "session_date": "2025-08-03 13:00:00",
+  "total_laps": 70,
+  "n_results": 20,
+  "n_laps": 1368,
+  "n_weather": 157
+}

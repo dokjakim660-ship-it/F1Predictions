@@ -1,0 +1,13 @@
+{
+  "year": 2021,
+  "round": 20,
+  "code": "R",
+  "session_name": "Race",
+  "event_name": "Qatar Grand Prix",
+  "event_date": "2021-11-21 00:00:00",
+  "session_date": "2021-11-21 14:00:00",
+  "total_laps": 57,
+  "n_results": 20,
+  "n_laps": 1114,
+  "n_weather": 152
+}

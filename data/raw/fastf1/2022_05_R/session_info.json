@@ -1,0 +1,13 @@
+{
+  "year": 2022,
+  "round": 5,
+  "code": "R",
+  "session_name": "Race",
+  "event_name": "Miami Grand Prix",
+  "event_date": "2022-05-08 00:00:00",
+  "session_date": "2022-05-08 19:30:00",
+  "total_laps": 57,
+  "n_results": 20,
+  "n_laps": 1057,
+  "n_weather": 162
+}

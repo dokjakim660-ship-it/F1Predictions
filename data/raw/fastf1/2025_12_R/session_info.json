@@ -1,0 +1,13 @@
+{
+  "year": 2025,
+  "round": 12,
+  "code": "R",
+  "session_name": "Race",
+  "event_name": "British Grand Prix",
+  "event_date": "2025-07-06 00:00:00",
+  "session_date": "2025-07-06 14:00:00",
+  "total_laps": 52,
+  "n_results": 20,
+  "n_laps": 825,
+  "n_weather": 155
+}

@@ -1,0 +1,13 @@
+{
+  "year": 2022,
+  "round": 9,
+  "code": "R",
+  "session_name": "Race",
+  "event_name": "Canadian Grand Prix",
+  "event_date": "2022-06-19 00:00:00",
+  "session_date": "2022-06-19 18:00:00",
+  "total_laps": 70,
+  "n_results": 20,
+  "n_laps": 1264,
+  "n_weather": 162
+}

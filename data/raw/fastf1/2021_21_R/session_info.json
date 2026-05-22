@@ -1,0 +1,13 @@
+{
+  "year": 2021,
+  "round": 21,
+  "code": "R",
+  "session_name": "Race",
+  "event_name": "Saudi Arabian Grand Prix",
+  "event_date": "2021-12-05 00:00:00",
+  "session_date": "2021-12-05 17:30:00",
+  "total_laps": 50,
+  "n_results": 20,
+  "n_laps": 845,
+  "n_weather": 193
+}

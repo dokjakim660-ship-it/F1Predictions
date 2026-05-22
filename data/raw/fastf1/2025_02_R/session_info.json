@@ -1,0 +1,13 @@
+{
+  "year": 2025,
+  "round": 2,
+  "code": "R",
+  "session_name": "Race",
+  "event_name": "Chinese Grand Prix",
+  "event_date": "2025-03-23 00:00:00",
+  "session_date": "2025-03-23 07:00:00",
+  "total_laps": 56,
+  "n_results": 20,
+  "n_laps": 1065,
+  "n_weather": 154
+}

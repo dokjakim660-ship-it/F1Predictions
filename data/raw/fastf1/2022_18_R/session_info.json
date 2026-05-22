@@ -1,0 +1,13 @@
+{
+  "year": 2022,
+  "round": 18,
+  "code": "R",
+  "session_name": "Race",
+  "event_name": "Japanese Grand Prix",
+  "event_date": "2022-10-09 00:00:00",
+  "session_date": "2022-10-09 05:00:00",
+  "total_laps": 53,
+  "n_results": 20,
+  "n_laps": 507,
+  "n_weather": 255
+}

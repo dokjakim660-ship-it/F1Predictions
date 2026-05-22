@@ -1,0 +1,13 @@
+{
+  "year": 2025,
+  "round": 8,
+  "code": "R",
+  "session_name": "Race",
+  "event_name": "Monaco Grand Prix",
+  "event_date": "2025-05-25 00:00:00",
+  "session_date": "2025-05-25 13:00:00",
+  "total_laps": 78,
+  "n_results": 20,
+  "n_laps": 1425,
+  "n_weather": 160
+}

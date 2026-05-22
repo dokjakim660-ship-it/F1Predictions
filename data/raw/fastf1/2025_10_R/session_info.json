@@ -1,0 +1,13 @@
+{
+  "year": 2025,
+  "round": 10,
+  "code": "R",
+  "session_name": "Race",
+  "event_name": "Canadian Grand Prix",
+  "event_date": "2025-06-15 00:00:00",
+  "session_date": "2025-06-15 18:00:00",
+  "total_laps": 70,
+  "n_results": 20,
+  "n_laps": 1349,
+  "n_weather": 167
+}

@@ -1,0 +1,13 @@
+{
+  "year": 2022,
+  "round": 1,
+  "code": "R",
+  "session_name": "Race",
+  "event_name": "Bahrain Grand Prix",
+  "event_date": "2022-03-20 00:00:00",
+  "session_date": "2022-03-20 15:00:00",
+  "total_laps": 57,
+  "n_results": 20,
+  "n_laps": 1125,
+  "n_weather": 163
+}

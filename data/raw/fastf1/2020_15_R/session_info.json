@@ -1,0 +1,13 @@
+{
+  "year": 2020,
+  "round": 15,
+  "code": "R",
+  "session_name": "Race",
+  "event_name": "Bahrain Grand Prix",
+  "event_date": "2020-11-29 00:00:00",
+  "session_date": "2020-11-29 14:10:00",
+  "total_laps": 57,
+  "n_results": 20,
+  "n_laps": 1019,
+  "n_weather": 216
+}

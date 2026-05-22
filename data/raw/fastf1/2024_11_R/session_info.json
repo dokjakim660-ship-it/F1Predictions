@@ -1,0 +1,13 @@
+{
+  "year": 2024,
+  "round": 11,
+  "code": "R",
+  "session_name": "Race",
+  "event_name": "Austrian Grand Prix",
+  "event_date": "2024-06-30 00:00:00",
+  "session_date": "2024-06-30 13:00:00",
+  "total_laps": 71,
+  "n_results": 20,
+  "n_laps": 1405,
+  "n_weather": 143
+}

@@ -1,0 +1,13 @@
+{
+  "year": 2023,
+  "round": 21,
+  "code": "R",
+  "session_name": "Race",
+  "event_name": "Las Vegas Grand Prix",
+  "event_date": "2023-11-18 00:00:00",
+  "session_date": "2023-11-19 06:00:00",
+  "total_laps": 50,
+  "n_results": 20,
+  "n_laps": 946,
+  "n_weather": 108
+}

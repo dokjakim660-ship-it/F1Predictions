@@ -1,0 +1,13 @@
+{
+  "year": 2024,
+  "round": 3,
+  "code": "R",
+  "session_name": "Race",
+  "event_name": "Australian Grand Prix",
+  "event_date": "2024-03-24 00:00:00",
+  "session_date": "2024-03-24 04:00:00",
+  "total_laps": 58,
+  "n_results": 19,
+  "n_laps": 998,
+  "n_weather": 144
+}

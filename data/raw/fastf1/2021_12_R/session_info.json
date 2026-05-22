@@ -1,0 +1,13 @@
+{
+  "year": 2021,
+  "round": 12,
+  "code": "R",
+  "session_name": "Race",
+  "event_name": "Belgian Grand Prix",
+  "event_date": "2021-08-29 00:00:00",
+  "session_date": "2021-08-29 13:00:00",
+  "total_laps": 39,
+  "n_results": 20,
+  "n_laps": 60,
+  "n_weather": 290
+}

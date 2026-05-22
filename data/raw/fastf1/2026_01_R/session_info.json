@@ -1,0 +1,13 @@
+{
+  "year": 2026,
+  "round": 1,
+  "code": "R",
+  "session_name": "Race",
+  "event_name": "Australian Grand Prix",
+  "event_date": "2026-03-08 00:00:00",
+  "session_date": "2026-03-08 04:00:00",
+  "total_laps": 58,
+  "n_results": 22,
+  "n_laps": 1006,
+  "n_weather": 148
+}

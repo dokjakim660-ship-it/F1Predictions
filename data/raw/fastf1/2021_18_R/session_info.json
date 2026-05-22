@@ -1,0 +1,13 @@
+{
+  "year": 2021,
+  "round": 18,
+  "code": "R",
+  "session_name": "Race",
+  "event_name": "Mexico City Grand Prix",
+  "event_date": "2021-11-07 00:00:00",
+  "session_date": "2021-11-07 19:00:00",
+  "total_laps": 71,
+  "n_results": 20,
+  "n_laps": 1261,
+  "n_weather": 164
+}

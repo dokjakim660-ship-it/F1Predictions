@@ -1,0 +1,13 @@
+{
+  "year": 2023,
+  "round": 14,
+  "code": "R",
+  "session_name": "Race",
+  "event_name": "Italian Grand Prix",
+  "event_date": "2023-09-03 00:00:00",
+  "session_date": "2023-09-03 13:00:00",
+  "total_laps": 51,
+  "n_results": 20,
+  "n_laps": 957,
+  "n_weather": 156
+}

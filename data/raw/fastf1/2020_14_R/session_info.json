@@ -1,0 +1,13 @@
+{
+  "year": 2020,
+  "round": 14,
+  "code": "R",
+  "session_name": "Race",
+  "event_name": "Turkish Grand Prix",
+  "event_date": "2020-11-15 00:00:00",
+  "session_date": "2020-11-15 10:10:00",
+  "total_laps": 58,
+  "n_results": 20,
+  "n_laps": 1077,
+  "n_weather": 139
+}

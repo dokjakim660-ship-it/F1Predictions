@@ -1,0 +1,13 @@
+{
+  "year": 2025,
+  "round": 22,
+  "code": "R",
+  "session_name": "Race",
+  "event_name": "Las Vegas Grand Prix",
+  "event_date": "2025-11-22 00:00:00",
+  "session_date": "2025-11-23 04:00:00",
+  "total_laps": 50,
+  "n_results": 20,
+  "n_laps": 886,
+  "n_weather": 141
+}

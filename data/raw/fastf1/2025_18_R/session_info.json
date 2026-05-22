@@ -1,0 +1,13 @@
+{
+  "year": 2025,
+  "round": 18,
+  "code": "R",
+  "session_name": "Race",
+  "event_name": "Singapore Grand Prix",
+  "event_date": "2025-10-05 00:00:00",
+  "session_date": "2025-10-05 12:00:00",
+  "total_laps": 62,
+  "n_results": 20,
+  "n_laps": 1229,
+  "n_weather": 161
+}

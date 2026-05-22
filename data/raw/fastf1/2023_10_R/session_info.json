@@ -1,0 +1,13 @@
+{
+  "year": 2023,
+  "round": 10,
+  "code": "R",
+  "session_name": "Race",
+  "event_name": "British Grand Prix",
+  "event_date": "2023-07-09 00:00:00",
+  "session_date": "2023-07-09 14:00:00",
+  "total_laps": 52,
+  "n_results": 20,
+  "n_laps": 971,
+  "n_weather": 151
+}

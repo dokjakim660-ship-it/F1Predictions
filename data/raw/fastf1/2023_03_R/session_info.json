@@ -1,0 +1,13 @@
+{
+  "year": 2023,
+  "round": 3,
+  "code": "R",
+  "session_name": "Race",
+  "event_name": "Australian Grand Prix",
+  "event_date": "2023-04-02 00:00:00",
+  "session_date": "2023-04-02 05:00:00",
+  "total_laps": 58,
+  "n_results": 20,
+  "n_laps": 1003,
+  "n_weather": 222
+}

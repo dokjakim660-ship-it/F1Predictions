@@ -1,0 +1,13 @@
+{
+  "year": 2023,
+  "round": 22,
+  "code": "R",
+  "session_name": "Race",
+  "event_name": "Abu Dhabi Grand Prix",
+  "event_date": "2023-11-26 00:00:00",
+  "session_date": "2023-11-26 13:00:00",
+  "total_laps": 58,
+  "n_results": 20,
+  "n_laps": 1157,
+  "n_weather": 156
+}
