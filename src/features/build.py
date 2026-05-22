@@ -226,9 +226,7 @@ def _add_driver_form(df: pd.DataFrame) -> pd.DataFrame:
         lambda x: _roll_shift(x.astype(float), 10)
     )
     df["driver_form_points_l5"] = g["points"].transform(lambda x: _roll_shift(x, 5))
-    df["driver_form_dnf_rate_l10"] = g["dnf"].transform(
-        lambda x: _roll_shift(x.astype(float), 10)
-    )
+    df["driver_form_dnf_rate_l10"] = g["dnf"].transform(lambda x: _roll_shift(x.astype(float), 10))
     df["driver_form_quali_pos_l5"] = g["q_position"].transform(lambda x: _roll_shift(x, 5))
     df["driver_career_races"] = g.cumcount()
     return df.drop(columns=["_pp"])
@@ -258,9 +256,7 @@ def _add_team_form(df: pd.DataFrame) -> pd.DataFrame:
         lambda x: _roll_shift(x / 2.0, 10)
     )
     per_race["team_form_dnf_rate_l10"] = g["team_dnf"].transform(lambda x: _roll_shift(x, 10))
-    per_race["team_form_quali_gap_pole_l5"] = g["team_q_gap"].transform(
-        lambda x: _roll_shift(x, 5)
-    )
+    per_race["team_form_quali_gap_pole_l5"] = g["team_q_gap"].transform(lambda x: _roll_shift(x, 5))
 
     out_cols = [
         "constructor_id",
@@ -274,9 +270,7 @@ def _add_team_form(df: pd.DataFrame) -> pd.DataFrame:
     return df.merge(per_race[out_cols], on=["constructor_id", "race_id"], how="left")
 
 
-def _add_track_features(
-    df: pd.DataFrame, inv: pd.DataFrame, tracks: pd.DataFrame
-) -> pd.DataFrame:
+def _add_track_features(df: pd.DataFrame, inv: pd.DataFrame, tracks: pd.DataFrame) -> pd.DataFrame:
     circuits = inv[["race_id", "circuit_id"]].drop_duplicates()
     df = df.merge(circuits, on="race_id", how="left")
     df["track_id"] = [
@@ -368,9 +362,7 @@ def _print_summary(df: pd.DataFrame) -> None:
     print(f"[features.build] FastF1 quali join matched: {matched:.1%} of rows")
     print(f"[features.build] has_fp2: {df['has_fp2'].mean():.1%} of rows")
     high_nan = {
-        c: f"{df[c].isna().mean():.1%}"
-        for c in FEATURE_COLUMNS
-        if df[c].isna().mean() > 0.05
+        c: f"{df[c].isna().mean():.1%}" for c in FEATURE_COLUMNS if df[c].isna().mean() > 0.05
     }
     print(f"[features.build] features >5% NaN (rookies / no-FP2 expected): {high_nan}")
     by_year = df.groupby("year").size()
