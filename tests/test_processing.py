@@ -261,9 +261,13 @@ class TestSessionsParquet:
         q = df["q_best_ms"].dropna()
         if q.empty:
             pytest.skip("no qualifying sessions processed yet")
-        # F1 quali laps: roughly 60s (Monza-like) .. 110s (Spa/Baku-like).
-        assert q.min() > 55_000
-        assert q.max() < 120_000
+        # q_best_ms is each driver's *best* lap, so this band covers real
+        # extremes, not just pole pace. Floor 50s: 2020 Sakhir GP (2020_16) ran
+        # the 3.5km Bahrain Outer Circuit -- Bottas's pole was a real 53.377s.
+        # Ceiling 3min: wet Q1 (2020 Turkey) and lone crash laps (Sargeant,
+        # Jeddah '23) legitimately reach ~2:20. Outside the band = parsing bug.
+        assert q.min() > 50_000
+        assert q.max() < 180_000
 
 
 class TestCrossTableAlignment:

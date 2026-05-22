@@ -45,6 +45,9 @@ def top3_accuracy_per_race(
     correct = 0
     total = 0
     for _, sub in df.groupby("race_id", sort=False):
+        # Shuffle first so tied probabilities (e.g. a constant-rate model) break
+        # randomly instead of reading the input's row order.
+        sub = sub.sample(frac=1.0, random_state=0)
         top3_idx = sub["y_prob"].nlargest(3).index
         predicted_top3 = sub.loc[top3_idx]
         actual_podium_mask = sub["y_true"] == 1
@@ -79,3 +82,32 @@ def format_summary_row(s: dict[str, float]) -> str:
         f"log_loss={s['log_loss']:.4f}  top3_acc={s['top3_acc']:.3f}  "
         f"n_obs={s['n_obs']}  n_races={s['n_races']}"
     )
+
+
+def paired_bootstrap_brier_ci(
+    race_ids: pd.Series | np.ndarray,
+    y_true: np.ndarray,
+    prob_a: np.ndarray,
+    prob_b: np.ndarray,
+    n_boot: int = 1000,
+    seed: int = 42,
+) -> tuple[float, float]:
+    """95% CI for Brier(a) - Brier(b), resampling whole races (paired).
+
+    Races are the resampling unit so the CI respects race-level correlation.
+    A fully-negative interval means model A's Brier is significantly lower;
+    an interval straddling zero means the gap is not significant at 95%.
+    """
+    race_ids = np.asarray(race_ids)
+    y_true = np.asarray(y_true, dtype=float)
+    se_a = (np.asarray(prob_a, dtype=float) - y_true) ** 2
+    se_b = (np.asarray(prob_b, dtype=float) - y_true) ** 2
+    races = np.unique(race_ids)
+    race_to_rows = {r: np.flatnonzero(race_ids == r) for r in races}
+    rng = np.random.default_rng(seed)
+    diffs = np.empty(n_boot)
+    for i in range(n_boot):
+        sampled = rng.choice(races, size=len(races), replace=True)
+        rows = np.concatenate([race_to_rows[r] for r in sampled])
+        diffs[i] = se_a[rows].mean() - se_b[rows].mean()
+    return float(np.percentile(diffs, 2.5)), float(np.percentile(diffs, 97.5))
