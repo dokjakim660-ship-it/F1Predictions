@@ -12,8 +12,9 @@ dist/
 # --- FastF1 Cache (NICHT im Repo, kann mehrere GB werden) ---
 data/raw/fastf1_cache/
 
-# --- Logs ---
+# --- Logs / transient test output ---
 *.log
+smoke_*.txt
 
 # --- MLflow ---
 mlruns/
