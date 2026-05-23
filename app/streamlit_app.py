@@ -15,11 +15,21 @@ import streamlit as st
 
 st.set_page_config(page_title="F1 Predictions", page_icon="🏎️", layout="wide")
 
+next_race_page = st.Page(
+    "app_pages/next_race.py",
+    title="Next Race",
+    icon=":material/flag:",
+    default=True,
+)
+stakes_page = st.Page(
+    "app_pages/stakes.py",
+    title="Stakes",
+    icon=":material/payments:",
+)
 methodology_page = st.Page(
     "app_pages/methodology.py",
     title="Methodology",
     icon=":material/description:",
-    default=True,
 )
 backtest_page = st.Page(
     "app_pages/backtest.py",
@@ -32,7 +42,10 @@ importance_page = st.Page(
     icon=":material/bar_chart:",
 )
 
-page = st.navigation([methodology_page, backtest_page, importance_page], position="top")
+page = st.navigation(
+    [next_race_page, stakes_page, methodology_page, backtest_page, importance_page],
+    position="top",
+)
 
 st.title("🏎️ F1 Predictions")
 st.caption(

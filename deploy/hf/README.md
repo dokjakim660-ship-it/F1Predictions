@@ -21,6 +21,14 @@ into this Space. No FastF1 / xgboost / shap dependencies at runtime.
 
 ## What you get on each page
 
+- **Next Race** (default) — calibrated podium + teammate-H2H probabilities
+  for the upcoming race, refreshed locally each Saturday after qualifying.
+  Top-3 podium rows highlighted; team-pair view shows the favored driver
+  per constructor. Flags sprint weekends (FP2 missing).
+- **Stakes** — Kelly-staking calculator. Enter a bankroll plus the decimal
+  odds your bookmaker offers per driver and the page returns the
+  Kelly-optimal stake per value bet (default Quarter-Kelly, slider for the
+  fraction). Works for both Podium and Teammate-H2H markets.
 - **Methodology** — what the two targets are, how features are built and
   evaluated, what comes next.
 - **Backtest History** — per-model calibrated Brier with 95 % bootstrap CIs,
