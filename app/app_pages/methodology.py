@@ -39,8 +39,9 @@ A 31-feature table joined from three L2 sources (one row = one driver × one rac
 
 ### What is next
 
-Phase 2 brings this app to HuggingFace Spaces and adds a Next-Race page
-once the pre-race inference pipeline is built. Phase 4 brings real
-bookmaker odds and the ROI backtest — the actual "beat Tipico?" answer.
+Phase 3 added the **Next Race** page (default tab) so each Saturday-after-quali
+the calibrated podium + teammate-H2H probabilities are one `just predict-next`
+away. Phase 4 brings real bookmaker odds and the ROI backtest — the actual
+"beat Tipico?" answer.
     """
 )

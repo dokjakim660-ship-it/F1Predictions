@@ -7,13 +7,18 @@ Phase 2.4 deployment helper. Mirrors only what the runtime needs:
 - deploy/hf/README.md           -> {hf}/README.md   (overwrites HFs auto-generated one)
 - app/                          -> {hf}/app/
 - predictions/mvp_test_*.parquet,
-  predictions/importance_*.parquet
+  predictions/importance_*.parquet,
+  predictions/next_race_*.parquet
                                 -> {hf}/predictions/   (only the parquets the app reads;
                                                         baseline.parquet from Phase 1.3
                                                         stays behind, on purpose)
 - models/reliability_mvp_*.png  -> {hf}/models/
 - data/reference/race_inventory.parquet
                                 -> {hf}/data/reference/race_inventory.parquet
+- data/features/next_race.parquet
+                                -> {hf}/data/features/next_race.parquet
+                                                       (driver_family_name + constructor_name
+                                                        lookup for the Next Race page)
 
 Each mirror dir is wiped before copy so deletions on the source side surface
 in the HF clone (and stale files dont silently linger between deploys).
@@ -46,12 +51,17 @@ SYNC_PLAN: list[tuple[str | tuple[str, ...], str, str]] = [
     ("deploy/hf/README.md", "README.md", "file"),
     ("app", "app", "dir"),
     (
-        ("predictions/mvp_test_*.parquet", "predictions/importance_*.parquet"),
+        (
+            "predictions/mvp_test_*.parquet",
+            "predictions/importance_*.parquet",
+            "predictions/next_race_*.parquet",
+        ),
         "predictions",
         "globs",
     ),
     (("models/reliability_mvp_*.png",), "models", "globs"),
     ("data/reference/race_inventory.parquet", "data/reference/race_inventory.parquet", "file"),
+    ("data/features/next_race.parquet", "data/features/next_race.parquet", "file"),
 ]
 
 
@@ -60,8 +70,7 @@ def _assert_hf_clone(hf_path: Path) -> None:
         raise SystemExit(f"HF clone path does not exist: {hf_path}")
     if not (hf_path / ".git").exists():
         raise SystemExit(
-            f"{hf_path} is not a git repository. "
-            "Clone the empty HF Space repo there first."
+            f"{hf_path} is not a git repository. Clone the empty HF Space repo there first."
         )
 
 
