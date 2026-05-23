@@ -29,6 +29,7 @@ mlartifacts/
 .ipynb_checkpoints/
 .vscode/
 .idea/
+.claude/
 *.swp
 
 # --- OS ---
