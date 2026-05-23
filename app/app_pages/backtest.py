@@ -182,7 +182,7 @@ trend_chart = (
     .encode(
         x=alt.X("race_date:T", title="Race date"),
         y=alt.Y("brier:Q", title="Per-race Brier"),
-        color=alt.Color("model:N", title="Model"),
+        color=alt.Color("model:N", title="Model", legend=alt.Legend(orient="bottom")),
         tooltip=[
             alt.Tooltip("gp_name:N", title="Grand Prix"),
             alt.Tooltip("race_date:T", title="Date"),
@@ -222,12 +222,16 @@ per_race_briers = {
     for col in prob_cols_cal
 }
 best_in_race = min(per_race_briers, key=per_race_briers.get)
-b_cols = st.columns(len(per_race_briers))
-for (name, b), col in zip(per_race_briers.items(), b_cols):
-    col.metric(
-        f"{name}{' (race best)' if name == best_in_race else ''}",
-        f"Brier {b:.4f}",
-    )
+per_race_table = pd.DataFrame(
+    [
+        {
+            "model": f"⭐ {name}" if name == best_in_race else name,
+            "race brier": round(b, 4),
+        }
+        for name, b in sorted(per_race_briers.items(), key=lambda x: x[1])
+    ]
+)
+st.dataframe(per_race_table, hide_index=True, width="stretch")
 
 sort_col = f"prob_{best_in_race}_cal"
 show_cols = ["driver_id", target_col] + prob_cols_cal
