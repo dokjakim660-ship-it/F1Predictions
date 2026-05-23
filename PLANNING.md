@@ -1,7 +1,7 @@
 # F1 Prediction — Planungsdokument
 
 > Konsolidierte Master-Referenz. Erstellt 2026-05-20.
-> Stand: Planungsphase abgeschlossen, vor Implementation.
+> Stand: Phasen 0–2 ✅ DONE (2026-05-23). Phase 3 startet mit Plan-Abweichung gegenüber Original-Roadmap — Next-Race-Predict-Pipeline statt Pre-Quali-Modell (Pre-Quali rutscht auf Phase 4). Begründung + Sub-Plan in §13.
 
 ---
 
@@ -204,20 +204,24 @@ Train [2018→2024-12]  Test [2025-01→2025-12]
 
 ## 9. Roadmap
 
-| Phase | Wochen | Inhalt | Geschätztes Ende |
+| Phase | Wochen | Inhalt | Status / Geschätztes Ende |
 |---|---|---|---|
-| 0 — Setup | 1 | Repo, uv, just, FastF1-Test | Ende Mai 2026 |
-| 1 — MVP | 5–6 | Ingest, Features, Baselines, XGB+LGBM, MLflow, Calibration | Mitte Juli 2026 |
-| 2 — HF Spaces App | 3–4 | Streamlit Multi-Page, HF Deployment | Anfang August 2026 |
-| 3 — Pre-Quali-Modell | 3 | Zweites Modell ohne Quali-Features, A/B vs. Pre-Race | Ende August 2026 |
-| 4 — Quoten + ROI | 4–6 | The Odds API + manuell, ROI-Backtest, Kelly | Sep/Okt 2026 |
-| 5+ | open-ended | Ranking-Modell, DNF-Sub-Modell, Ensemble, Pole, Top-6/10, Live | ab Q4 2026 |
+| 0 — Setup | 1 | Repo, uv, just, FastF1-Test | ✅ DONE Mai 2026 |
+| 1 — MVP | 5–6 | Ingest, Features, Baselines, XGB+LGBM, MLflow, Calibration | ✅ DONE 2026-05-23 |
+| 2 — HF Spaces App | 3–4 | Streamlit Multi-Page (Methodology, Backtest, Importance), HF Deployment | ✅ DONE 2026-05-23 |
+| **3 — Next-Race-Predict-Pipeline** ⏳ NEXT | 3–4 | Ingest "next-only", Feature-Row für zukünftiges Rennen, `just predict-next`, Streamlit "Next Race"-Page, Sprint-WE-Verifikation. Details §13. | Ende Juni 2026 |
+| 4 — Pre-Quali-Modell + Quoten/ROI | 6–8 | Pre-Quali-Modell A/B vs. Pre-Race; The Odds API + manuell, ROI-Backtest, Kelly | Q3/Q4 2026 |
+| 5+ | open-ended | Ranking-Modell, DNF-Sub-Modell, Pole, Top-6/10, Live | ab Q4 2026 |
 
-**Was schon nach Phase 1 nutzbar ist:**
-- ✅ Eigene Tipps fürs F1-Tippspiel
-- ✅ Intuition-vs-Modell-Vergleich
-- ✅ Brier-vs-Baselines-Check
-- ⏸ UI fehlt (P2), Pre-Quali (P3), ROI-Aussage (P4)
+**Plan-Abweichung Phase 3** (2026-05-23): Ursprünglich war Phase 3 das Pre-Quali-Modell. Beim Push-Review vor Phase 3 fiel auf, dass die Pipeline zwar sprint-robust ist (Ingest/Process/Features tolerieren fehlendes FP2), aber kein End-to-End-Predict-Pfad für ein zukünftiges Rennen existiert — die App zeigt nur historische Holdout-Predictions. Das war der eigentliche Nutzwert des Projekts ("Sa-Abend nach Quali Tipico-Quoten vergleichen"). Pre-Quali-Modell ist obendrein nur sinnvoll, wenn die Predict-Strecke einmal sauber steht, also gehört es architektonisch hinter Phase 3.
+
+**Was schon nach Phase 2 (jetzt) nutzbar ist:**
+- ✅ Brier-/Calibration-Validierung auf Holdout 2024.5–2025
+- ✅ Intuition-vs-Modell-Vergleich auf historischen Rennen (Backtest-Page)
+- ✅ Portfolio-fähige App auf HF Spaces
+- ⏸ "Quali laden → Predictions für *das nächste* Rennen" (P3)
+- ⏸ Pre-Quali-Tipps (P4)
+- ⏸ ROI-Aussage "schlagen wir Tipico?" (P4)
 
 ---
 
@@ -257,6 +261,32 @@ Train [2018→2024-12]  Test [2025-01→2025-12]
 9. FastF1 erstes Sample testen: einen Race (z. B. Monaco 2024) ziehen und Lap-Times inspizieren
 
 → Wenn Phase 0 steht: nächste Session über Phase-1-Implementierung starten.
+
+---
+
+## 13. Phase 3 — Next-Race-Predict-Pipeline (Sub-Plan)
+
+**Ziel:** Sa-Abend nach Quali einen Befehl ausführen und die Podium-/Teammate-Wahrscheinlichkeiten für das *nächste* Rennen in der App sehen. Sprint-Wochenenden inklusive (FP2 fehlt → `has_fp2=0`, NaN-tolerant durch XGB/LGBM).
+
+**Aktuelle Lücke:** Ingest/Process/Features sind bereits robust gebaut. Was fehlt: ein Inferenz-Pfad, der eine Feature-Row für ein noch-nicht-stattgefundenes Rennen produziert und das calibrated Modell aus Phase 1.5 darauf anwendet. `justfile predict RACE` ist noch ein Stub.
+
+**Sub-Phasen:**
+
+| Sub | Inhalt | Artefakte |
+|---|---|---|
+| **3.1 Ingest "next-only"** | Leichtgewichtiger Modus: für ein einzelnes zukünftiges Rennen nur `Q` + (`FP2` wenn vorhanden) + Wetter-Forecast ziehen. Keine `R`-Session, da noch nicht stattgefunden. | `just ingest-next YEAR ROUND` |
+| **3.2 Feature-Row für zukünftiges Rennen** | Build muss eine Race-Zeile bauen, in der Race-Outcome-Spalten (Podium, DNF, Teammate-Beat) bewusst NaN sind, aber alle Pre-Race-Features sauber gefüllt. Rolling-Form-Features ziehen aus der letzten kompletten Race im Inventory. Strikte Leakage-Garantie: keine Daten der Ziel-Race-ID in irgendeinem Feature. | `data/features/next_race.parquet`, neuer Test `test_no_leakage_next.py` |
+| **3.3 Predict-Script + just-Target** | Calibrated Ensemble-Estimator von Phase 1.5 laden, `predict_proba` auf die Next-Race-Row, Output als Parquet + CLI-Tabelle. | `just predict-next YEAR ROUND`, `predictions/next_race.parquet` |
+| **3.4 Streamlit "Next Race"-Page** | Default-Tab der App. Tabelle: Fahrer · Team · Grid · P(Podium) · P(beat Teammate). Hinweis "Sprint-WE, keine FP2-Pace" wenn `has_fp2=0`. Auf HF Spaces deploybar via existierender `sync_to_hf.py`. | `app/app_pages/next_race.py` |
+| **3.5 Sprint-WE-Verifikation** | Echter Trockenlauf auf historischem Sprint-WE (z. B. 2024 Brasilien oder Austin): ingest-next → feature-row → predict läuft fehlerfrei, NaN-FP2 wird sauber als 0 propagiert, Predictions plausibel. | dokumentierter Lauf im `models/CHANGELOG.md` |
+
+**Geschätzter Aufwand:** 3–4 Wochen bei 8–12h/Wo. Größter Brocken ist 3.2 — Feature-Row für noch-nicht-existierendes-Rennen ohne Leakage; bestehender Feature-Build geht vom Long-Format "Driver × *vergangenes* Race" aus.
+
+**Erfolgskriterien Phase 3:**
+1. `just predict-next 2026 <round>` läuft frisch durch (ohne Cache, ohne manuelle Edits) und schreibt eine plausible Predictions-Tabelle.
+2. Sprint-WE-Verifikationslauf (3.5) zeigt: keine FP2 → keine Pipeline-Errors → Predictions weichen vom Normal-WE in vorhersehbarer Richtung ab (FP2-Features NaN, alle anderen identisch).
+3. "Next Race"-Page auf HF Spaces live, Default-Tab.
+4. `tests/test_no_leakage_next.py` grün — keine Ziel-Race-Daten in den Features.
 
 ---
 
