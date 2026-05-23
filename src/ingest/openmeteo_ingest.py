@@ -4,9 +4,15 @@ For each race in race_inventory.parquet we pull a 24-hour hourly window
 on race_date at the circuit's lat/lon. The Open-Meteo Archive API is free,
 stable, no key required.
 
+For future races (Phase 3.1 next-race-predict) we instead hit the Forecast
+endpoint, which goes ~16 days out. Forecast snapshots land in a separate
+`{year}_{round:02d}.forecast.json` so they don't clobber the archive (which
+becomes available a day or two after the race).
+
 Subcommands:
     smoke                            - Phase 0 smoke (kept)
-    race    --year Y --round N       - pull one race
+    race    --year Y --round N       - pull one race (archive)
+    next    --year Y --round N       - pull forecast for a future race
     season  --year Y                 - pull all completed races in a season
     all                              - pull every completed race in the inventory
 """
@@ -26,6 +32,7 @@ from src.utils.paths import RAW_DIR
 from src.utils.race_inventory import load_inventory
 
 OPENMETEO_ARCHIVE = "https://archive-api.open-meteo.com/v1/archive"
+OPENMETEO_FORECAST = "https://api.open-meteo.com/v1/forecast"
 OPENMETEO_DIR = RAW_DIR / "openmeteo"
 
 _HOURLY_VARS = [
@@ -72,6 +79,24 @@ def fetch_race_weather(lat: float, lon: float, race_date_iso: str) -> dict:
     return _get(OPENMETEO_ARCHIVE, params)
 
 
+def fetch_race_forecast(lat: float, lon: float, race_date_iso: str) -> dict:
+    """Pull the hourly forecast for a single race day from the /v1/forecast endpoint.
+
+    Open-Meteo's forecast horizon is ~16 days; calling this for a race further out
+    will return an error. Payload shape matches the archive endpoint (same hourly
+    keys + utc_offset_seconds), so the downstream processor can consume either.
+    """
+    params = {
+        "latitude": lat,
+        "longitude": lon,
+        "start_date": race_date_iso,
+        "end_date": race_date_iso,
+        "hourly": ",".join(_HOURLY_VARS),
+        "timezone": "auto",
+    }
+    return _get(OPENMETEO_FORECAST, params)
+
+
 def save_race_weather(
     year: int,
     round_no: int,
@@ -90,6 +115,21 @@ def save_race_weather(
     return target, True
 
 
+def save_race_forecast(
+    year: int,
+    round_no: int,
+    lat: float,
+    lon: float,
+    race_date_iso: str,
+) -> tuple[Path, bool]:
+    """Always (over)writes — forecasts move, and we want the latest pull."""
+    OPENMETEO_DIR.mkdir(parents=True, exist_ok=True)
+    target = OPENMETEO_DIR / f"{year}_{round_no:02d}.forecast.json"
+    data = fetch_race_forecast(lat, lon, race_date_iso)
+    target.write_text(json.dumps(data, indent=2))
+    return target, True
+
+
 def pull_race(year: int, round_no: int, *, refresh: bool = False) -> Path:
     inv = load_inventory()
     row = inv.query("year == @year and round == @round_no")
@@ -102,6 +142,19 @@ def pull_race(year: int, round_no: int, *, refresh: bool = False) -> Path:
     )
     marker = "fresh" if fresh else "cached"
     print(f"[open-meteo] {year} R{round_no:02d} {r['gp_name']:<30s} -> {out.name} ({marker})")
+    return out
+
+
+def pull_next_race(year: int, round_no: int) -> Path:
+    """Forecast pull for a single future race. Always re-fetches (forecasts drift)."""
+    inv = load_inventory()
+    row = inv.query("year == @year and round == @round_no")
+    if row.empty:
+        raise ValueError(f"{year} R{round_no:02d} not in race_inventory")
+    r = row.iloc[0]
+    race_date_iso = str(r["race_date"])
+    out, _ = save_race_forecast(year, round_no, float(r["lat"]), float(r["lon"]), race_date_iso)
+    print(f"[open-meteo] {year} R{round_no:02d} {r['gp_name']:<30s} -> {out.name} (forecast)")
     return out
 
 
@@ -194,6 +247,10 @@ def main(argv: list[str] | None = None) -> int:
     p_race.add_argument("--round", type=int, required=True)
     p_race.add_argument("--refresh", action="store_true")
 
+    p_next = sub.add_parser("next", help="Pull forecast for one future race")
+    p_next.add_argument("--year", type=int, required=True)
+    p_next.add_argument("--round", type=int, required=True)
+
     p_season = sub.add_parser("season", help="Pull weather for all completed races in a season")
     p_season.add_argument("--year", type=int, required=True)
     p_season.add_argument("--refresh", action="store_true")
@@ -207,6 +264,9 @@ def main(argv: list[str] | None = None) -> int:
         return smoke_test()
     if args.cmd == "race":
         pull_race(args.year, args.round, refresh=args.refresh)
+        return 0
+    if args.cmd == "next":
+        pull_next_race(args.year, args.round)
         return 0
     if args.cmd == "season":
         pull_season(args.year, refresh=args.refresh)

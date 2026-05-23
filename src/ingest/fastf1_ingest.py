@@ -13,6 +13,7 @@ without re-trying the network.
 Subcommands:
     smoke                            - Phase 0 smoke (kept)
     race    --year Y --round N       - pull one race weekend (Q + R + FP2)
+    next    --year Y --round N       - pull only Q + FP2 for a future race (no R)
     season  --year Y                 - pull every completed race in a season
     all                              - pull every completed race in the inventory
 """
@@ -34,6 +35,7 @@ from src.utils.race_inventory import load_inventory
 
 FASTF1_DIR = RAW_DIR / "fastf1"
 SESSIONS: tuple[str, ...] = ("Q", "R", "FP2")
+NEXT_SESSIONS: tuple[str, ...] = ("Q", "FP2")
 
 
 def _ensure_cache() -> None:
@@ -140,6 +142,24 @@ def pull_race_weekend(year: int, round_no: int, *, refresh: bool = False) -> int
     return ok
 
 
+def pull_next_race_weekend(year: int, round_no: int) -> int:
+    """Lightweight ingest for a future race: only Q + FP2, no R.
+
+    Always refreshes (no skip-on-marker): the typical call pattern is "run before
+    qualifying" (empty Q marker) then "run again after qualifying" (real Q data),
+    and a cached empty/error marker would block the second pull. Skipping R
+    avoids writing an "error" marker for a race that hasn't happened. Sprint
+    weekends keep producing an FP2 error marker — consumed downstream as
+    `has_fp2=0`.
+    """
+    _ensure_cache()
+    ok = 0
+    for code in NEXT_SESSIONS:
+        if _save_session(year, round_no, code, refresh=True):
+            ok += 1
+    return ok
+
+
 def pull_season(year: int, *, refresh: bool = False) -> None:
     inv = load_inventory()
     season = inv.query("year == @year").sort_values("round")
@@ -221,6 +241,10 @@ def main(argv: list[str] | None = None) -> int:
     p_race.add_argument("--round", type=int, required=True)
     p_race.add_argument("--refresh", action="store_true")
 
+    p_next = sub.add_parser("next", help="Pull Q + FP2 for a future race (no R)")
+    p_next.add_argument("--year", type=int, required=True)
+    p_next.add_argument("--round", type=int, required=True)
+
     p_season = sub.add_parser("season", help="Pull all completed races in a season")
     p_season.add_argument("--year", type=int, required=True)
     p_season.add_argument("--refresh", action="store_true")
@@ -240,6 +264,9 @@ def main(argv: list[str] | None = None) -> int:
             return smoke_test()
         if args.cmd == "race":
             pull_race_weekend(args.year, args.round, refresh=args.refresh)
+            return 0
+        if args.cmd == "next":
+            pull_next_race_weekend(args.year, args.round)
             return 0
         if args.cmd == "season":
             pull_season(args.year, refresh=args.refresh)
