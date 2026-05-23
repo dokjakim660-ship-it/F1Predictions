@@ -309,12 +309,18 @@ def _add_season_era(df: pd.DataFrame, inv: pd.DataFrame) -> pd.DataFrame:
     return df
 
 
-def build_features() -> pd.DataFrame:
-    results = load_results()
-    sessions = load_sessions()
-    inv = load_inventory()
-    tracks = load_tracks()
+def compute_features(
+    results: pd.DataFrame,
+    sessions: pd.DataFrame,
+    inv: pd.DataFrame,
+    tracks: pd.DataFrame,
+) -> pd.DataFrame:
+    """Run the L2 -> L3 feature pipeline on pre-loaded tables.
 
+    Split out of build_features() so the Phase 3.2 next-race builder can drive
+    the same pipeline with a synthesized pseudo-results row appended onto the
+    historical results table.
+    """
     missing = [c for c in _SESSION_COLS if c not in sessions.columns]
     if missing:
         raise KeyError(f"sessions.parquet missing expected columns: {missing}")
@@ -335,6 +341,10 @@ def build_features() -> pd.DataFrame:
     out_cols = _META_COLS + [TARGET_PODIUM, TARGET_TEAMMATE] + FEATURE_COLUMNS + CATEGORICAL_COLUMNS
     df = df[out_cols].sort_values(["year", "round", "driver_id"]).reset_index(drop=True)
     return df
+
+
+def build_features() -> pd.DataFrame:
+    return compute_features(load_results(), load_sessions(), load_inventory(), load_tracks())
 
 
 def save_features(df: pd.DataFrame, path: Path = FEATURES_PARQUET) -> Path:
