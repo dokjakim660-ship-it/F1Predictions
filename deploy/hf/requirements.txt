@@ -1,0 +1,9 @@
+# Runtime deps for the HuggingFace Space (Docker SDK).
+# Strictly what the four app pages import -- no training stack, no
+# fastf1/shap/xgboost/lightgbm/sklearn. The predictions and importance
+# parquets are precomputed locally and shipped in the Space repo.
+streamlit>=1.38
+pandas>=2.2
+pyarrow>=16
+numpy>=1.26
+altair>=5

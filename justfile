@@ -144,6 +144,13 @@ show-features:
 app:
     uv run --group app streamlit run app/streamlit_app.py
 
+# --- Phase 2.4 HuggingFace Spaces deploy ---
+
+# Copy the deployable subset into a local HF Space clone (then commit+push there).
+# HF_PATH must point at an existing git clone of the HF Space repo.
+deploy-hf HF_PATH:
+    uv run python scripts/sync_to_hf.py {{HF_PATH}}
+
 # --- Phase 1 placeholders (filled later) ---
 
 train:
