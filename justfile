@@ -76,6 +76,31 @@ ingest-season YEAR:
     uv run python -m src.ingest.jolpica_ingest results --year {{YEAR}}
     uv run python -m src.ingest.openmeteo_ingest season --year {{YEAR}}
 
+# Phase 3.1 next-race ingest: refresh schedule + pull Q/FP2 + weather forecast for ONE future race.
+# Runs Sa-Abend after qualifying. No R session (race hasn't happened); forecast lands in
+# `{year}_{round:02d}.forecast.json` so it doesn't clobber the historical archive later.
+ingest-next YEAR ROUND:
+    uv run python -m src.ingest.jolpica_ingest schedule --years {{YEAR}} --refresh
+    uv run python -m src.utils.race_inventory build
+    uv run python -m src.ingest.fastf1_ingest next --year {{YEAR}} --round {{ROUND}}
+    uv run python -m src.ingest.openmeteo_ingest next --year {{YEAR}} --round {{ROUND}}
+
+# Phase 3.2 next-race feature build. Rebuilds the FastF1 sessions L2 first so the
+# freshly ingested Q/FP2 lands in sessions.parquet, then synthesizes a pseudo-row
+# per driver for the target race and runs the full feature pipeline on top of it.
+# Writes data/features/next_race.parquet. Run AFTER `just ingest-next YEAR ROUND`.
+build-next-features YEAR ROUND:
+    uv run python -m src.process.fastf1 build
+    uv run python -m src.features.next_race build --year {{YEAR}} --round {{ROUND}}
+
+# Phase 3.3 next-race inference: re-trains XGB+LGBM+LogReg on the full historical
+# feature table, fits isotonic calibrators on dev OOF predictions, predicts the
+# next race for both podium and teammate-H2H targets. Writes
+# `predictions/next_race_{podium,teammate}.parquet`. Run AFTER build-next-features.
+predict-next YEAR ROUND:
+    uv run python -m src.models.predict_next run --year {{YEAR}} --round {{ROUND}} --target podium
+    uv run python -m src.models.predict_next run --year {{YEAR}} --round {{ROUND}} --target teammate
+
 # Full backfill across all sources. Lightweight sources first (Open-Meteo, Jolpica)
 # so they finish even if FastF1 rate-limits us (500 calls/h - see prune-rate-limit).
 ingest-all:
