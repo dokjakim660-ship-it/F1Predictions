@@ -37,6 +37,12 @@ dev = [
     "ruff>=0.6",
     "ipykernel>=6.29",
     "jupyterlab>=4.2",
+    # Phase 2.2: SHAP for XGBoost feature attribution (offline only -- HF Spaces
+    # never imports shap; the app reads the precomputed importance parquet).
+    # numba is a shap dep; pinned to the Python-3.12-compatible line because
+    # `shap>=0.46` alone resolves to numba 0.53 which is 3.9-only.
+    "shap>=0.46",
+    "numba>=0.59",
 ]
 # Phase 2: HuggingFace Spaces app
 app = [

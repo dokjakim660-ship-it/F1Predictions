@@ -272,7 +272,9 @@ def _print_report(
         else:
             bl_verdict = "Phase 1 success criterion FAILED (best model does NOT beat baseline)"
         print(f"Paired bootstrap: Brier({best}) - Brier(Top3Quali), raw probs")
-        print(f"  95% CI [{bl_lo:+.4f}, {bl_hi:+.4f}]  (mean diff {bl_diff:+.4f})  ->  {bl_verdict}")
+        print(
+            f"  95% CI [{bl_lo:+.4f}, {bl_hi:+.4f}]  (mean diff {bl_diff:+.4f})  ->  {bl_verdict}"
+        )
 
     helped = [
         n for n in _REAL_MODELS if by_name[n].metrics["brier_cal"] < by_name[n].metrics["brier_raw"]

@@ -123,6 +123,11 @@ tune-mvp TRIALS="50" TARGET="podium":
 final-eval TARGET="podium":
     uv run python -m src.models.final_eval run --target {{TARGET}}
 
+# Feature importance for the best model (XGB+SHAP for podium, LogReg coefs for teammate).
+# Writes predictions/importance_{TARGET}.parquet, consumed by the Streamlit app.
+importance TARGET="podium":
+    uv run python -m src.eval.importance run --target {{TARGET}}
+
 # --- Phase 1.2 Feature table (L2 processed -> L3 model-ready) ---
 
 # Build the rich MVP feature table -> data/features/mvp.parquet

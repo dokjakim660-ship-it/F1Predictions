@@ -26,8 +26,13 @@ backtest_page = st.Page(
     title="Backtest History",
     icon=":material/show_chart:",
 )
+importance_page = st.Page(
+    "app_pages/importance.py",
+    title="Feature Importance",
+    icon=":material/bar_chart:",
+)
 
-page = st.navigation([methodology_page, backtest_page], position="top")
+page = st.navigation([methodology_page, backtest_page, importance_page], position="top")
 
 st.title("🏎️ F1 Predictions")
 st.caption(
