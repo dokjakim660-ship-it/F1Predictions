@@ -21,6 +21,22 @@ INVENTORY_PATH = REPO / "data" / "reference" / "race_inventory.parquet"
 _BOOT_N = 1000
 _BOOT_SEED = 42
 
+# Short labels for narrow displays (HF Spaces iframe). The biggest culprit was
+# `logisticregression` (28 chars) blowing up table column / chart Y-axis widths,
+# pushing the page past the iframe and triggering horizontal-scrollbar reflow.
+_DISPLAY_NAMES = {
+    "constantrate": "const",
+    "top3quali": "top3-quali",
+    "logisticregression": "logreg",
+    "xgboost": "xgb",
+    "lightgbm": "lgbm",
+    "ensemble": "ensemble",
+}
+
+
+def _short(name: str) -> str:
+    return _DISPLAY_NAMES.get(name, name)
+
 
 @st.cache_data(show_spinner=False)
 def _load_predictions(target_short: str) -> pd.DataFrame:
@@ -67,7 +83,7 @@ def _brier_table_with_ci(target_short: str, target_col: str) -> pd.DataFrame:
         boot = np.array([se[rows_].mean() for rows_ in sampled])
         rows.append(
             {
-                "model": _model_name(col),
+                "model": _short(_model_name(col)),
                 "brier_cal": float(se.mean()),
                 "brier_lo": float(np.percentile(boot, 2.5)),
                 "brier_hi": float(np.percentile(boot, 97.5)),
@@ -88,7 +104,7 @@ def _per_race_brier(target_short: str, target_col: str) -> pd.DataFrame:
         se = (preds[col] - y_true) ** 2
         per_race = se.groupby(preds["race_id"]).mean().rename("brier")
         per_race = per_race.reset_index()
-        per_race["model"] = _model_name(col)
+        per_race["model"] = _short(_model_name(col))
         per_race_parts.append(per_race)
     long = pd.concat(per_race_parts, ignore_index=True)
     return long.merge(inv, on="race_id", how="left").sort_values("race_date")
@@ -129,10 +145,17 @@ st.caption(
 )
 brier_df = _brier_table_with_ci(target_short, target_col)
 
-brier_display = brier_df.assign(
-    ci_low=brier_df["brier_lo"].round(4),
-    ci_high=brier_df["brier_hi"].round(4),
-).rename(columns={"brier_cal": "brier"})[["model", "brier", "ci_low", "ci_high"]]
+# Format the numeric columns as fixed-width strings so the dataframe widget
+# does not reserve full-precision-float widths (which on a narrow iframe
+# pushes the table past the viewport and triggers horizontal-scroll wackeln).
+brier_display = pd.DataFrame(
+    {
+        "model": brier_df["model"],
+        "brier": brier_df["brier_cal"].map(lambda x: f"{x:.4f}"),
+        "ci_low": brier_df["brier_lo"].map(lambda x: f"{x:.4f}"),
+        "ci_high": brier_df["brier_hi"].map(lambda x: f"{x:.4f}"),
+    }
+)
 st.dataframe(brier_display, hide_index=True, width="stretch")
 
 ci_chart = (
@@ -215,7 +238,9 @@ race_id = label_to_id[chosen_label]
 race_df = preds[preds["race_id"] == race_id].copy()
 prob_cols_cal = _cal_prob_cols(preds)
 
-# Per-race Brier for context above the drilldown table.
+# Per-race Brier for context above the drilldown table. Keep the long model
+# names as dict keys (they index back into prob_{name}_cal columns); only the
+# rendered model label shortens via _short().
 y_true_race = race_df[target_col].astype(int).to_numpy()
 per_race_briers = {
     _model_name(col): float(np.mean((race_df[col].to_numpy() - y_true_race) ** 2))
@@ -225,15 +250,28 @@ best_in_race = min(per_race_briers, key=per_race_briers.get)
 per_race_table = pd.DataFrame(
     [
         {
-            "model": f"⭐ {name}" if name == best_in_race else name,
-            "race brier": round(b, 4),
+            "model": f"⭐ {_short(name)}" if name == best_in_race else _short(name),
+            "race brier": f"{b:.4f}",
         }
         for name, b in sorted(per_race_briers.items(), key=lambda x: x[1])
     ]
 )
 st.dataframe(per_race_table, hide_index=True, width="stretch")
 
+# Per-driver wide table: rename long column headers + format probabilities as
+# percent strings to keep the table inside the iframe width on podium (6 model
+# cols) without horizontal overflow.
 sort_col = f"prob_{best_in_race}_cal"
-show_cols = ["driver_id", target_col] + prob_cols_cal
-table = race_df[show_cols].sort_values(sort_col, ascending=False)
-st.dataframe(table, hide_index=True, width="stretch")
+rename_map: dict[str, str] = {"driver_id": "driver", target_col: "actual"}
+for col in prob_cols_cal:
+    rename_map[col] = _short(_model_name(col))
+display = (
+    race_df[["driver_id", target_col, *prob_cols_cal]]
+    .sort_values(sort_col, ascending=False)
+    .rename(columns=rename_map)
+)
+short_prob_cols = [_short(_model_name(c)) for c in prob_cols_cal]
+for col in short_prob_cols:
+    display[col] = (display[col] * 100).map(lambda x: f"{x:.1f}%")
+display["actual"] = display["actual"].astype(int).map({1: "✓", 0: "—"})
+st.dataframe(display, hide_index=True, width="stretch")
