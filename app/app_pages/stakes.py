@@ -30,6 +30,12 @@ import streamlit as st
 REPO = Path(__file__).resolve().parents[2]
 FEATURES_PATH = REPO / "data" / "features" / "next_race.parquet"
 
+# Drop computed Kelly stakes below this EUR threshold from the output table.
+# Bookmaker minimums (Tipico etc.) are typically 1.00, so Kelly fractions
+# that would size a bet below this are not actionable -- skip rather than
+# floor-up (flooring would over-stake and break the Kelly variance bound).
+MIN_STAKE_EUR = 1.0
+
 # Best calibrated model per target on the Phase-1.5 holdout test
 # (Ensemble ties XGB for podium @ Brier 0.0616; LogReg wins teammate @ 0.1958).
 _DEFAULT_MODEL = {"podium": "ensemble", "teammate": "logisticregression"}
@@ -154,10 +160,17 @@ def _render_target_section(target_short: str, bankroll: float, kelly_frac: float
     edited["kelly_pct"] = edited["kelly_raw"] * kelly_frac
     edited["stake"] = edited["kelly_pct"] * bankroll
 
-    bets = edited[edited["kelly_raw"] > 0].copy()
+    value_bets = edited[edited["kelly_raw"] > 0].copy()
+    bets = value_bets[value_bets["stake"] >= MIN_STAKE_EUR].copy()
     any_odds = (edited["odds"] > 1.0).any()
     if bets.empty:
-        if any_odds:
+        if not value_bets.empty:
+            st.info(
+                f"Value bets found but all sized below the €{MIN_STAKE_EUR:.0f} minimum — "
+                "raise the bankroll or the Kelly fraction to take them, or wait for "
+                "a race with a bigger edge."
+            )
+        elif any_odds:
             st.info(
                 "No value bets at the given odds — for every entered row the implied "
                 "probability already exceeds the model's P. Either the odds are too "
