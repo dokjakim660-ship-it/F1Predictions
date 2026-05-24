@@ -62,10 +62,36 @@ TARGET = TARGET_PODIUM
 
 _RANDOM_STATE = 42
 
+# Default monthly decay rate for time-decay sample weights (Phase 3.6.5).
+# 0.97/month -> 24mo old race weighted 0.48, 60mo old race weighted 0.16.
+# Treated as opt-in: pass decay_per_month=DEFAULT_DECAY_PER_MONTH explicitly,
+# `None` keeps the historical (unweighted) behaviour for clean ablation.
+DEFAULT_DECAY_PER_MONTH = 0.97
+
 # BaselineLogistic on the year-split test set (src/models/baseline.py). Rough
 # reference for the podium target only -- not the same split as the walk-forward
 # folds below, and meaningless for the teammate target.
 _PODIUM_BASELINE_TARGET = 0.0620
+
+
+def compute_time_decay_weights(
+    race_dates: pd.Series,
+    decay_per_month: float = DEFAULT_DECAY_PER_MONTH,
+    ref_date: pd.Timestamp | None = None,
+) -> np.ndarray:
+    """Per-row exponential decay weight by race age in months.
+
+    weight = decay_per_month ** months_back. Newer races -> ~1.0, older races
+    -> exponentially smaller. ref_date defaults to today. Returns 1.0 for any
+    row with a missing race_date so the row stays in the training set
+    untouched.
+    """
+    if ref_date is None:
+        ref_date = pd.Timestamp.today().normalize()
+    days_back = (pd.Timestamp(ref_date) - pd.to_datetime(race_dates)).dt.days.astype(float)
+    months_back = days_back / 30.44
+    weights = np.power(decay_per_month, months_back.fillna(0.0).to_numpy())
+    return weights
 
 
 def load_model_frame() -> pd.DataFrame:
@@ -135,14 +161,25 @@ def make_top3_quali_fit_predict(target_col: str = TARGET_PODIUM) -> FitPredictFn
     return fit_predict
 
 
-def make_logreg_fit_predict(target_col: str = TARGET_PODIUM) -> FitPredictFn:
+def make_logreg_fit_predict(
+    target_col: str = TARGET_PODIUM,
+    *,
+    decay_per_month: float | None = None,
+) -> FitPredictFn:
     def fit_predict(train: pd.DataFrame, val: pd.DataFrame) -> np.ndarray:
         medians = train[NUMERIC_FEATURES].median(numeric_only=True)
         x_train = _logreg_matrix(train, medians)
         x_val = _logreg_matrix(val, medians)
         scaler = StandardScaler().fit(x_train)
+        weights = (
+            compute_time_decay_weights(train["race_date"], decay_per_month)
+            if decay_per_month is not None
+            else None
+        )
         model = LogisticRegression(max_iter=1000).fit(
-            scaler.transform(x_train), train[target_col].astype(int)
+            scaler.transform(x_train),
+            train[target_col].astype(int),
+            sample_weight=weights,
         )
         return model.predict_proba(scaler.transform(x_val))[:, 1]
 
@@ -158,7 +195,11 @@ _XGB_DEFAULT_PARAMS: dict = dict(
 )
 
 
-def make_default_xgb_fit_predict(target_col: str = TARGET_PODIUM) -> FitPredictFn:
+def make_default_xgb_fit_predict(
+    target_col: str = TARGET_PODIUM,
+    *,
+    decay_per_month: float | None = None,
+) -> FitPredictFn:
     def fit_predict(train: pd.DataFrame, val: pd.DataFrame) -> np.ndarray:
         model = xgb.XGBClassifier(
             **_XGB_DEFAULT_PARAMS,
@@ -167,7 +208,12 @@ def make_default_xgb_fit_predict(target_col: str = TARGET_PODIUM) -> FitPredictF
             random_state=_RANDOM_STATE,
             n_jobs=-1,
         )
-        model.fit(train[TREE_FEATURES], train[target_col].astype(int))
+        weights = (
+            compute_time_decay_weights(train["race_date"], decay_per_month)
+            if decay_per_month is not None
+            else None
+        )
+        model.fit(train[TREE_FEATURES], train[target_col].astype(int), sample_weight=weights)
         return model.predict_proba(val[TREE_FEATURES])[:, 1]
 
     return fit_predict
@@ -184,7 +230,11 @@ _LGBM_DEFAULT_PARAMS: dict = dict(
 )
 
 
-def make_default_lgbm_fit_predict(target_col: str = TARGET_PODIUM) -> FitPredictFn:
+def make_default_lgbm_fit_predict(
+    target_col: str = TARGET_PODIUM,
+    *,
+    decay_per_month: float | None = None,
+) -> FitPredictFn:
     def fit_predict(train: pd.DataFrame, val: pd.DataFrame) -> np.ndarray:
         model = lgb.LGBMClassifier(
             **_LGBM_DEFAULT_PARAMS,
@@ -192,8 +242,13 @@ def make_default_lgbm_fit_predict(target_col: str = TARGET_PODIUM) -> FitPredict
             n_jobs=-1,
             verbose=-1,
         )
+        weights = (
+            compute_time_decay_weights(train["race_date"], decay_per_month)
+            if decay_per_month is not None
+            else None
+        )
         # LightGBM auto-detects the pandas category column as a categorical feature.
-        model.fit(train[TREE_FEATURES], train[target_col].astype(int))
+        model.fit(train[TREE_FEATURES], train[target_col].astype(int), sample_weight=weights)
         return model.predict_proba(val[TREE_FEATURES])[:, 1]
 
     return fit_predict

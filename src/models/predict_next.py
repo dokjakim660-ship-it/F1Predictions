@@ -30,6 +30,7 @@ from src.eval.calibration import IsotonicCalibrator
 from src.eval.walk_forward import oof_predictions, split_dev_test
 from src.features.next_race import load_next_race
 from src.models.mvp import (
+    DEFAULT_DECAY_PER_MONTH,
     DEFAULT_TARGET,
     TARGETS,
     load_model_frame,
@@ -52,17 +53,32 @@ def predictions_path(target_short: str) -> Path:
 _REAL_MODELS = ("LogisticRegression", "XGBoost", "LightGBM", "Ensemble")
 
 
-def _model_specs(target_col: str, target_short: str):
+def _model_specs(target_col: str, target_short: str, *, decay_per_month: float | None = None):
     """Same factories final_eval uses, in the same order. Trees use the Optuna
     best params from `models/optuna.db`; LogReg uses sklearn defaults.
+
+    decay_per_month: opt-in time-decay sample weights (Phase 3.6.5). Default
+    None preserves the historical unweighted behaviour.
     """
     xgb_params = best_params("xgboost", target_short)
     lgbm_params = best_params("lightgbm", target_short)
     specs = [
         ("ConstantRate", make_constant_fit_predict(target_col), {}),
-        ("LogisticRegression", make_logreg_fit_predict(target_col), {}),
-        ("XGBoost", make_xgb_fit_predict(xgb_params, target_col), xgb_params),
-        ("LightGBM", make_lgbm_fit_predict(lgbm_params, target_col), lgbm_params),
+        (
+            "LogisticRegression",
+            make_logreg_fit_predict(target_col, decay_per_month=decay_per_month),
+            {},
+        ),
+        (
+            "XGBoost",
+            make_xgb_fit_predict(xgb_params, target_col, decay_per_month=decay_per_month),
+            xgb_params,
+        ),
+        (
+            "LightGBM",
+            make_lgbm_fit_predict(lgbm_params, target_col, decay_per_month=decay_per_month),
+            lgbm_params,
+        ),
     ]
     if target_short == "podium":
         specs.insert(1, ("Top3Quali", make_top3_quali_fit_predict(target_col), {}))
@@ -104,7 +120,13 @@ def _predict_one_model(
     return raw_prob, cal_prob
 
 
-def predict_next_race(year: int, round_no: int, target_short: str = DEFAULT_TARGET) -> pd.DataFrame:
+def predict_next_race(
+    year: int,
+    round_no: int,
+    target_short: str = DEFAULT_TARGET,
+    *,
+    decay_per_month: float | None = DEFAULT_DECAY_PER_MONTH,
+) -> pd.DataFrame:
     if target_short not in TARGETS:
         raise ValueError(f"Unknown target {target_short!r}; choose from {tuple(TARGETS)}")
     target_col = TARGETS[target_short]
@@ -130,7 +152,9 @@ def predict_next_race(year: int, round_no: int, target_short: str = DEFAULT_TARG
 
     raw_by_name: dict[str, np.ndarray] = {}
     cal_by_name: dict[str, np.ndarray] = {}
-    for name, fit_predict, _ in _model_specs(target_col, target_short):
+    for name, fit_predict, _ in _model_specs(
+        target_col, target_short, decay_per_month=decay_per_month
+    ):
         raw, cal = _predict_one_model(name, fit_predict, mvp, dev, nxt, target_col)
         raw_by_name[name] = raw
         cal_by_name[name] = cal

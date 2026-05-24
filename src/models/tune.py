@@ -30,6 +30,7 @@ from src.models.mvp import (
     DEFAULT_TARGET,
     TARGETS,
     TREE_FEATURES,
+    compute_time_decay_weights,
     prepare_dev_test,
 )
 from src.utils.paths import OPTUNA_DB
@@ -81,7 +82,12 @@ def _suggest_lgbm(trial: optuna.Trial) -> dict:
     }
 
 
-def make_xgb_fit_predict(params: dict, target_col: str = TARGET_PODIUM) -> FitPredictFn:
+def make_xgb_fit_predict(
+    params: dict,
+    target_col: str = TARGET_PODIUM,
+    *,
+    decay_per_month: float | None = None,
+) -> FitPredictFn:
     def fit_predict(train, val):
         model = xgb.XGBClassifier(
             **params,
@@ -90,13 +96,23 @@ def make_xgb_fit_predict(params: dict, target_col: str = TARGET_PODIUM) -> FitPr
             random_state=_RANDOM_STATE,
             n_jobs=-1,
         )
-        model.fit(train[TREE_FEATURES], train[target_col].astype(int))
+        weights = (
+            compute_time_decay_weights(train["race_date"], decay_per_month)
+            if decay_per_month is not None
+            else None
+        )
+        model.fit(train[TREE_FEATURES], train[target_col].astype(int), sample_weight=weights)
         return model.predict_proba(val[TREE_FEATURES])[:, 1]
 
     return fit_predict
 
 
-def make_lgbm_fit_predict(params: dict, target_col: str = TARGET_PODIUM) -> FitPredictFn:
+def make_lgbm_fit_predict(
+    params: dict,
+    target_col: str = TARGET_PODIUM,
+    *,
+    decay_per_month: float | None = None,
+) -> FitPredictFn:
     def fit_predict(train, val):
         model = lgb.LGBMClassifier(
             **params,
@@ -105,8 +121,13 @@ def make_lgbm_fit_predict(params: dict, target_col: str = TARGET_PODIUM) -> FitP
             n_jobs=-1,
             verbose=-1,
         )
+        weights = (
+            compute_time_decay_weights(train["race_date"], decay_per_month)
+            if decay_per_month is not None
+            else None
+        )
         # LightGBM auto-detects the pandas category column as a categorical feature.
-        model.fit(train[TREE_FEATURES], train[target_col].astype(int))
+        model.fit(train[TREE_FEATURES], train[target_col].astype(int), sample_weight=weights)
         return model.predict_proba(val[TREE_FEATURES])[:, 1]
 
     return fit_predict
