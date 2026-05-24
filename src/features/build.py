@@ -111,6 +111,7 @@ FEATURE_COLUMNS = [
     # Season / era
     "season_progress",
     "era_2022plus",
+    "era_2026plus",
 ]
 
 _WEATHER_COLS = [
@@ -367,6 +368,7 @@ def _add_season_era(df: pd.DataFrame, inv: pd.DataFrame) -> pd.DataFrame:
     df["season_progress"] = df["round"] / df["season_rounds"]
     df = df.drop(columns=["season_rounds"])
     df["era_2022plus"] = (df["year"] >= 2022).astype(int)
+    df["era_2026plus"] = (df["year"] >= 2026).astype(int)
     return df
 
 
