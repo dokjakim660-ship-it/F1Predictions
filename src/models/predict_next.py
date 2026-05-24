@@ -41,6 +41,16 @@ from src.models.mvp import (
 from src.models.tune import best_params, make_lgbm_fit_predict, make_xgb_fit_predict
 from src.utils.paths import PREDICTIONS_DIR
 
+# Per-target time-decay defaults from the Phase 3.6.6 ablation on the
+# locked holdout test set:
+#   podium   : decay HURT (-0.0008 ensemble Brier) -> keep weights off
+#   teammate : decay HELPED (+0.0009 ensemble Brier) -> keep weights on
+# Callers can still override via predict_next_race(... decay_per_month=...).
+_DEFAULT_DECAY_PER_TARGET: dict[str, float | None] = {
+    "podium": None,
+    "teammate": DEFAULT_DECAY_PER_MONTH,
+}
+
 
 # One-file-per-target output. The Streamlit "Next Race" page in Phase 3.4
 # will read this same path.
@@ -125,8 +135,10 @@ def predict_next_race(
     round_no: int,
     target_short: str = DEFAULT_TARGET,
     *,
-    decay_per_month: float | None = DEFAULT_DECAY_PER_MONTH,
+    decay_per_month: float | None | str = "auto",
 ) -> pd.DataFrame:
+    if decay_per_month == "auto":
+        decay_per_month = _DEFAULT_DECAY_PER_TARGET.get(target_short)
     if target_short not in TARGETS:
         raise ValueError(f"Unknown target {target_short!r}; choose from {tuple(TARGETS)}")
     target_col = TARGETS[target_short]
