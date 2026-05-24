@@ -44,8 +44,11 @@ def _storage() -> str:
 
 
 def _study_name(model: str, target_short: str) -> str:
-    # _v2 keeps the Phase 1.2 feature-set bump from polluting the v1 trials;
-    # the target prefix keeps podium and teammate searches strictly separated.
+    # _v2 = Phase 1.5 feature-set tuning. v3 trials were run in Phase 3.7 on the
+    # expanded 41-feature space; dev-set Optuna objective improved 3 of 4 studies
+    # but holdout test-set Brier regressed across the board (small dev + small
+    # test = high tuning variance), so production reverted to v2. v3 trials
+    # remain in models/optuna.db for reference and re-analysis.
     return f"{target_short}_{model}_v2"
 
 
