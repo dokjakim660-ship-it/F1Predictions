@@ -131,25 +131,41 @@ def build_weather(weather_dir: Path = OPENMETEO_DIR) -> pd.DataFrame:
     inv = load_inventory().set_index(["year", "round"])
     rows: list[dict] = []
     for f in files:
-        year_str, round_str = f.stem.split("_")
-        year, round_no = int(year_str), int(round_str)
+        # Archive files are `<year>_<round>.json`; forecast files (Phase 3.1) are
+        # `<year>_<round>.forecast.json`. Both coexist for races between forecast
+        # pull and archive availability; archive wins below via drop_duplicates.
+        stem = f.stem
+        is_forecast = stem.endswith(".forecast")
+        base = stem[: -len(".forecast")] if is_forecast else stem
+        try:
+            year_str, round_str = base.split("_")
+            year, round_no = int(year_str), int(round_str)
+        except ValueError:
+            print(f"[process.openmeteo] {f.name}: cannot parse year/round, skipping")
+            continue
         key = (year, round_no)
         if key not in inv.index:
             print(f"[process.openmeteo] {f.name}: not in race_inventory, skipping")
             continue
         inv_row = inv.loc[key]
         payload = json.loads(f.read_text())
-        rows.append(
-            _row_from_payload(
-                year,
-                round_no,
-                payload,
-                str(inv_row["race_date"]),
-                str(inv_row["race_time_utc"] or ""),
-            )
+        row = _row_from_payload(
+            year,
+            round_no,
+            payload,
+            str(inv_row["race_date"]),
+            str(inv_row["race_time_utc"] or ""),
         )
+        row["weather_source"] = "forecast" if is_forecast else "archive"
+        rows.append(row)
 
-    df = pd.DataFrame(rows).sort_values(["year", "round"]).reset_index(drop=True)
+    df = pd.DataFrame(rows)
+    # Same race may have both archive and forecast rows after the race is run.
+    # Archive sorts before "forecast" alphabetically -> keep="first" wins archive.
+    df = df.sort_values(["year", "round", "weather_source"]).drop_duplicates(
+        ["year", "round"], keep="first"
+    )
+    df = df.sort_values(["year", "round"]).reset_index(drop=True)
     return df
 
 
