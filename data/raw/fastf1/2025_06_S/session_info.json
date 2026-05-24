@@ -1,0 +1,13 @@
+{
+  "year": 2025,
+  "round": 6,
+  "code": "S",
+  "session_name": "Sprint",
+  "event_name": "Miami Grand Prix",
+  "event_date": "2025-05-04 00:00:00",
+  "session_date": "2025-05-03 16:00:00",
+  "total_laps": 18,
+  "n_results": 20,
+  "n_laps": 331,
+  "n_weather": 114
+}

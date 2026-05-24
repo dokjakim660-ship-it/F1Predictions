@@ -1,0 +1,13 @@
+{
+  "year": 2026,
+  "round": 5,
+  "code": "S",
+  "session_name": "Sprint",
+  "event_name": "Canadian Grand Prix",
+  "event_date": "2026-05-24 00:00:00",
+  "session_date": "2026-05-23 16:00:00",
+  "total_laps": 23,
+  "n_results": 22,
+  "n_laps": 491,
+  "n_weather": 78
+}

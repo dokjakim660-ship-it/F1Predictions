@@ -1,0 +1,13 @@
+{
+  "year": 2023,
+  "round": 9,
+  "code": "S",
+  "session_name": "Sprint",
+  "event_name": "Austrian Grand Prix",
+  "event_date": "2023-07-02 00:00:00",
+  "session_date": "2023-07-01 14:30:00",
+  "total_laps": 24,
+  "n_results": 20,
+  "n_laps": 480,
+  "n_weather": 97
+}

@@ -27,7 +27,7 @@ from src.utils.paths import PROCESSED_DIR, RAW_DIR
 FASTF1_DIR = RAW_DIR / "fastf1"
 SESSIONS_PARQUET = PROCESSED_DIR / "sessions.parquet"
 
-_SESSION_DIR_RE = re.compile(r"^(\d{4})_(\d{2})_(FP2|Q|R)$")
+_SESSION_DIR_RE = re.compile(r"^(\d{4})_(\d{2})_(FP2|Q|R|S)$")
 _MIN_LONG_RUN_STINT_LAPS = 5
 _MIN_TYRE_LIFE_FOR_LONG_RUN = 4
 
@@ -227,6 +227,34 @@ def _fp2_rows(session_dir: Path, race_id: str, year: int, round_no: int) -> pd.D
     return df
 
 
+def _sprint_rows(session_dir: Path, race_id: str, year: int, round_no: int) -> pd.DataFrame:
+    """Sprint finishing position + gap to winner per driver.
+
+    FastF1 stores Time as Timedelta: full race duration for P1, gap to leader
+    for P2..Pn, NaN for DNF/DNS. We expose gap_to_winner_ms = 0 for the winner,
+    otherwise the raw gap. DNF rows carry NaN (median-imputed downstream).
+    """
+    results = _safe_read(session_dir / "results.parquet")
+    if results is None or results.empty:
+        return pd.DataFrame()
+
+    df = results.copy()
+    df["_time_ms"] = _td_ms(df["Time"])
+    leader_pos = df["Position"].min(skipna=True)
+    gap = df["_time_ms"].where(df["Position"] != leader_pos, 0.0)
+
+    return pd.DataFrame(
+        {
+            "race_id": race_id,
+            "year": year,
+            "round": round_no,
+            "driver_abbr": df["Abbreviation"].astype(str),
+            "sprint_position": df["Position"],
+            "sprint_gap_to_winner_ms": gap,
+        }
+    )
+
+
 def _driver_dim_from_quali_or_race(quali_dir: Path | None, race_dir: Path | None) -> pd.DataFrame:
     """Driver-abbr -> driver_id/team mapping from the most-trustworthy results file."""
     for d in (race_dir, quali_dir):
@@ -258,16 +286,18 @@ def build_sessions(fastf1_dir: Path = FASTF1_DIR) -> pd.DataFrame:
         q_dir = code_to_dir.get("Q")
         r_dir = code_to_dir.get("R")
         fp2_dir = code_to_dir.get("FP2")
+        s_dir = code_to_dir.get("S")
 
         q_df = _quali_rows(q_dir, race_id, year, round_no) if q_dir else pd.DataFrame()
         r_df = _race_pace_rows(r_dir, race_id, year, round_no) if r_dir else pd.DataFrame()
         fp2_df = _fp2_rows(fp2_dir, race_id, year, round_no) if fp2_dir else pd.DataFrame()
+        s_df = _sprint_rows(s_dir, race_id, year, round_no) if s_dir else pd.DataFrame()
         dim_df = _driver_dim_from_quali_or_race(q_dir, r_dir)
 
         keys = ["race_id", "year", "round", "driver_abbr"]
         frames = [
             df[keys + [c for c in df.columns if c not in keys]]
-            for df in (q_df, r_df, fp2_df)
+            for df in (q_df, r_df, fp2_df, s_df)
             if not df.empty
         ]
         if not frames:
@@ -293,6 +323,7 @@ def build_sessions(fastf1_dir: Path = FASTF1_DIR) -> pd.DataFrame:
         merged["has_qualifying"] = not q_df.empty
         merged["has_race"] = not r_df.empty
         merged["has_fp2"] = not fp2_df.empty
+        merged["has_sprint"] = not s_df.empty
         all_rows.append(merged)
 
     df = pd.concat(all_rows, ignore_index=True)
@@ -317,10 +348,11 @@ def _print_summary(df: pd.DataFrame) -> None:
     n_with_quali = df[df["has_qualifying"]][["year", "round"]].drop_duplicates().shape[0]
     n_with_race = df[df["has_race"]][["year", "round"]].drop_duplicates().shape[0]
     n_with_fp2 = df[df["has_fp2"]][["year", "round"]].drop_duplicates().shape[0]
+    n_with_sprint = df[df.get("has_sprint", False)][["year", "round"]].drop_duplicates().shape[0]
     print(f"[process.fastf1] {len(df)} driver-race rows across {n_races} races")
     print(
         f"[process.fastf1] coverage of {n_races}: "
-        f"Q={n_with_quali}  R={n_with_race}  FP2={n_with_fp2}"
+        f"Q={n_with_quali}  R={n_with_race}  FP2={n_with_fp2}  S={n_with_sprint}"
     )
     by_year = df[["year", "round"]].drop_duplicates().groupby("year").size()
     for year, n in by_year.items():

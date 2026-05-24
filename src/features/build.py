@@ -58,6 +58,9 @@ _SESSION_COLS = [
     "fp2_short_run_best_ms",
     "fp2_long_run_lap_count",
     "has_fp2",
+    "sprint_position",
+    "sprint_gap_to_winner_ms",
+    "has_sprint",
 ]
 
 # The model-ready numeric feature set (~31 columns). Exported so the Phase 1.4
@@ -77,6 +80,11 @@ FEATURE_COLUMNS = [
     "fp2_short_run_gap_ms",
     "fp2_long_run_lap_count",
     "has_fp2",
+    # Sprint result (this race; NaN on non-sprint weekends, has_sprint flags it)
+    "sprint_position",
+    "sprint_gap_to_winner_ms",
+    "sprint_minus_quali_pos",
+    "has_sprint",
     # Driver rolling form (lagged)
     "driver_form_finish_l5",
     "driver_form_finish_l10",
@@ -232,6 +240,16 @@ def _add_fp2_features(df: pd.DataFrame) -> pd.DataFrame:
     # Left-join leaves NaN where FastF1 had no row; .eq(True) folds that to 0
     # without the object-dtype downcasting warning that .fillna(False) raises.
     df["has_fp2"] = df["has_fp2"].eq(True).astype(int)
+    return df
+
+
+def _add_sprint_features(df: pd.DataFrame) -> pd.DataFrame:
+    """Sprint-derived features. NaN where the race has no sprint (~85% of races)."""
+    df["sprint_position"] = pd.to_numeric(df["sprint_position"], errors="coerce")
+    df["sprint_minus_quali_pos"] = df["sprint_position"] - df["q_position"]
+    # has_sprint may arrive as bool, object-with-NaN, or numpy bool depending on
+    # the left-merge path; .eq(True) folds all three to a clean 0/1.
+    df["has_sprint"] = df["has_sprint"].eq(True).astype(int)
     return df
 
 
@@ -396,6 +414,7 @@ def compute_features(
     df = _add_driver_age(df)
     df = _add_quali_features(df)
     df = _add_fp2_features(df)
+    df = _add_sprint_features(df)
     df = _add_driver_form(df)
     df = _add_team_form(df)
     df = _add_team_standings(df)

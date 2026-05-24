@@ -1,0 +1,13 @@
+{
+  "year": 2025,
+  "round": 13,
+  "code": "S",
+  "session_name": "Sprint",
+  "event_name": "Belgian Grand Prix",
+  "event_date": "2025-07-27 00:00:00",
+  "session_date": "2025-07-26 10:00:00",
+  "total_laps": 15,
+  "n_results": 20,
+  "n_laps": 297,
+  "n_weather": 80
+}

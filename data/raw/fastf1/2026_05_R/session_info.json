@@ -1,0 +1,6 @@
+{
+  "year": 2026,
+  "round": 5,
+  "code": "R",
+  "error": "The data you are trying to access has not been loaded yet. See `Session.load`"
+}

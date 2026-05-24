@@ -34,8 +34,12 @@ from src.utils.paths import FASTF1_CACHE, RAW_DIR
 from src.utils.race_inventory import load_inventory
 
 FASTF1_DIR = RAW_DIR / "fastf1"
-SESSIONS: tuple[str, ...] = ("Q", "R", "FP2")
-NEXT_SESSIONS: tuple[str, ...] = ("Q", "FP2")
+# "S" = Sprint race (2021+). FastF1 raises on non-sprint weekends -> we write an
+# error marker (same pattern as FP2 on sprint weekends), consumed downstream as
+# has_sprint=0. Sprint Qualifying ("SQ", 2023+ grid-setter) is NOT included --
+# the race-craft + pace signal lives in the Sprint result itself, not its grid.
+SESSIONS: tuple[str, ...] = ("Q", "R", "FP2", "S")
+NEXT_SESSIONS: tuple[str, ...] = ("Q", "FP2", "S")
 
 
 def _ensure_cache() -> None:
