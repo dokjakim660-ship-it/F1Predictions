@@ -92,6 +92,9 @@ FEATURE_COLUMNS = [
     "team_form_podium_rate_l10",
     "team_form_dnf_rate_l10",
     "team_form_quali_gap_pole_l5",
+    # Constructor standings entering this race (lagged within-season cumsum)
+    "team_season_points_pre_race",
+    "team_season_pos_pre_race",
     # Track attributes
     "track_length_km",
     "track_n_corners",
@@ -286,6 +289,38 @@ def _add_team_form(df: pd.DataFrame) -> pd.DataFrame:
     return df.merge(per_race[out_cols], on=["constructor_id", "race_id"], how="left")
 
 
+def _add_team_standings(df: pd.DataFrame) -> pd.DataFrame:
+    """Cumulative WCC points and rank ENTERING the current race (no leakage).
+
+    Sums both cars' points per race, accumulates within (year, constructor) and
+    shifts by one so the current race is excluded. Rank is across constructors
+    within the same race (lower = better). Round 1 of each season returns NaN
+    for both -- no within-season history yet, downstream median-impute handles
+    it.
+    """
+    per_race = (
+        df.groupby(["year", "constructor_id", "race_id", "race_date"], as_index=False)["points"]
+        .sum()
+        .rename(columns={"points": "_team_race_points"})
+        .sort_values(["year", "constructor_id", "race_date"])
+        .reset_index(drop=True)
+    )
+    per_race["team_season_points_pre_race"] = per_race.groupby(
+        ["year", "constructor_id"], sort=False
+    )["_team_race_points"].transform(lambda x: x.cumsum().shift(1))
+    per_race["team_season_pos_pre_race"] = per_race.groupby(["year", "race_id"], sort=False)[
+        "team_season_points_pre_race"
+    ].rank(ascending=False, method="min")
+    out_cols = [
+        "year",
+        "constructor_id",
+        "race_id",
+        "team_season_points_pre_race",
+        "team_season_pos_pre_race",
+    ]
+    return df.merge(per_race[out_cols], on=["year", "constructor_id", "race_id"], how="left")
+
+
 def _add_track_features(df: pd.DataFrame, inv: pd.DataFrame, tracks: pd.DataFrame) -> pd.DataFrame:
     circuits = inv[["race_id", "circuit_id"]].drop_duplicates()
     df = df.merge(circuits, on="race_id", how="left")
@@ -361,6 +396,7 @@ def compute_features(
     df = _add_fp2_features(df)
     df = _add_driver_form(df)
     df = _add_team_form(df)
+    df = _add_team_standings(df)
     df = _add_track_features(df, inv, tracks)
     df = _add_driver_track_history(df)
     df = _add_weather_features(df, weather)
