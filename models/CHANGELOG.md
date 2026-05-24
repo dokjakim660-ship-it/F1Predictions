@@ -24,3 +24,7 @@ Format: `YYYY-MM-DD  <model_name>  <git_sha>  Brier=X  ECE=X  Notes`
 | 2026-05-24 | XGBoost | de449df | 0.2010 | 0.0313 | Phase 1.4 — rich features (teammate), walk-forward+Optuna (raw probs) |
 | 2026-05-24 | LightGBM | de449df | 0.2009 | 0.0391 | Phase 1.4 — rich features (teammate), walk-forward+Optuna (raw probs) |
 | 2026-05-24 | Ensemble | de449df | 0.2006 | 0.0320 | Phase 1.4 — rich features (teammate), walk-forward+Optuna (raw probs) |
+| 2026-05-24 | LogisticRegression | 1cb39ed | 0.0642 | 0.0224 | Phase 1.4 — rich features (podium), walk-forward+Optuna (raw probs) |
+| 2026-05-24 | XGBoost | 1cb39ed | 0.0631 | 0.0264 | Phase 1.4 — rich features (podium), walk-forward+Optuna (raw probs) |
+| 2026-05-24 | LightGBM | 1cb39ed | 0.0624 | 0.0240 | Phase 1.4 — rich features (podium), walk-forward+Optuna (raw probs) |
+| 2026-05-24 | Ensemble | 1cb39ed | 0.0625 | 0.0279 | Phase 1.4 — rich features (podium), walk-forward+Optuna (raw probs) |
