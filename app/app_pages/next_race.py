@@ -157,7 +157,7 @@ if target_short == "podium":
 else:
     st.caption(
         "P(driver finishes ahead of their constructor teammate). Per-driver "
-        "isotonic calibration — paired probs in a team sum to ~100–110%."
+        "isotonic calibration + pair-norm so each team's two legs sum to 100%."
     )
 
 display = preds.sort_values(prob_col, ascending=False).reset_index(drop=True)

@@ -26,7 +26,7 @@ from pathlib import Path
 import numpy as np
 import pandas as pd
 
-from src.eval.calibration import IsotonicCalibrator
+from src.eval.calibration import IsotonicCalibrator, pair_normalize_teammate
 from src.eval.walk_forward import oof_predictions, split_dev_test
 from src.features.next_race import load_next_race
 from src.models.mvp import (
@@ -172,6 +172,18 @@ def predict_next_race(
         cal_by_name[name] = cal
         out[f"prob_{name.lower()}_raw"] = raw
         out[f"prob_{name.lower()}_cal"] = cal
+
+    # Per-driver calibration leaves teammate pairs un-coupled (Mercedes ended up
+    # at 1.00 + 0.42 = 1.42 in Phase 3.6.7 on 2026 R5). Pair-norm forces each
+    # constructor pair to sum to 1.0, which is what the target actually models
+    # ("one of the two beats the other"). Applied per individual model BEFORE
+    # the ensemble blend so the ensemble averages self-consistent pair views;
+    # raw probs are left alone — they are the pre-calibration model output.
+    if target_short == "teammate":
+        constructor_ids = nxt["constructor_id"].to_numpy()
+        for name in list(cal_by_name):
+            cal_by_name[name] = pair_normalize_teammate(cal_by_name[name], constructor_ids)
+            out[f"prob_{name.lower()}_cal"] = cal_by_name[name]
 
     # Ensemble = equal-weight mean of XGB + LGBM, mirroring final_eval._build_ensemble.
     raw_by_name["Ensemble"] = (raw_by_name["XGBoost"] + raw_by_name["LightGBM"]) / 2.0

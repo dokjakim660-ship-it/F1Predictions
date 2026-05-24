@@ -29,7 +29,12 @@ import mlflow
 import numpy as np
 import pandas as pd
 
-from src.eval.calibration import IsotonicCalibrator, calibration_plot, ece
+from src.eval.calibration import (
+    IsotonicCalibrator,
+    calibration_plot,
+    ece,
+    pair_normalize_teammate,
+)
 from src.eval.metrics import brier, logloss, paired_bootstrap_brier_ci, top3_accuracy_per_race
 from src.eval.walk_forward import FitPredictFn, oof_predictions
 from src.models.mvp import (
@@ -97,6 +102,7 @@ def _evaluate_model(
     dev: pd.DataFrame,
     test: pd.DataFrame,
     target_col: str,
+    target_short: str,
 ) -> ModelEval:
     # Final model trains on the full dev set and scores the holdout test set.
     raw_prob = np.asarray(fit_predict(dev, test), dtype=float)
@@ -105,6 +111,11 @@ def _evaluate_model(
     oof = oof_predictions(dev, fit_predict, target_col=target_col)
     calibrator = IsotonicCalibrator.fit(oof.y_prob, oof.y_true)
     cal_prob = calibrator.transform(raw_prob)
+
+    # Couple teammate pairs so each constructor sums to 1.0. Per-driver isotonic
+    # leaves them independent; for "beat your teammate" that is logically wrong.
+    if target_short == "teammate":
+        cal_prob = pair_normalize_teammate(cal_prob, test["constructor_id"].to_numpy())
 
     y_true = test[target_col].astype(int).to_numpy()
     race_ids = test["race_id"]
@@ -302,7 +313,7 @@ def run(target_short: str = DEFAULT_TARGET) -> int:
         return 1
 
     evals = [
-        _evaluate_model(name, fit_predict, params, dev, test, target_col)
+        _evaluate_model(name, fit_predict, params, dev, test, target_col, target_short)
         for name, fit_predict, params in _model_specs(target_col, target_short)
     ]
 

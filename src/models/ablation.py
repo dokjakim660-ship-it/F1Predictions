@@ -30,7 +30,7 @@ import xgboost as xgb
 from sklearn.linear_model import LogisticRegression
 from sklearn.preprocessing import StandardScaler
 
-from src.eval.calibration import IsotonicCalibrator
+from src.eval.calibration import IsotonicCalibrator, pair_normalize_teammate
 from src.eval.metrics import brier
 from src.features.build import CATEGORICAL_COLUMNS
 from src.features.build import FEATURE_COLUMNS as ALL_NUMERIC_FEATURES
@@ -268,10 +268,17 @@ def _oof_predict_logreg(
 
 
 def _calibrate_and_score(
-    raw: np.ndarray, oof_prob: np.ndarray, oof_true: np.ndarray, y_test: np.ndarray
+    raw: np.ndarray,
+    oof_prob: np.ndarray,
+    oof_true: np.ndarray,
+    y_test: np.ndarray,
+    *,
+    constructor_ids: np.ndarray | None = None,
 ) -> tuple[float, np.ndarray]:
     calibrator = IsotonicCalibrator.fit(oof_prob, oof_true)
     cal = calibrator.transform(raw)
+    if constructor_ids is not None:
+        cal = pair_normalize_teammate(cal, constructor_ids)
     return brier(y_test, cal), cal
 
 
@@ -297,9 +304,18 @@ def run_variant(
     )
     oof_logreg, _ = _oof_predict_logreg(dev, numeric, target_col, variant.decay_per_month)
 
-    brier_xgb, cal_xgb = _calibrate_and_score(raw_xgb, oof_xgb, y_oof, y_test)
-    brier_lgbm, cal_lgbm = _calibrate_and_score(raw_lgbm, oof_lgbm, y_oof, y_test)
-    brier_logreg, _ = _calibrate_and_score(raw_logreg, oof_logreg, y_oof, y_test)
+    # For teammate, couple constructor pairs (P_A + P_B = 1) on cal probs before
+    # scoring; ensemble averages two pair-normed legs so it stays pair-coupled.
+    pair_ids = test["constructor_id"].to_numpy() if target_short == "teammate" else None
+    brier_xgb, cal_xgb = _calibrate_and_score(
+        raw_xgb, oof_xgb, y_oof, y_test, constructor_ids=pair_ids
+    )
+    brier_lgbm, cal_lgbm = _calibrate_and_score(
+        raw_lgbm, oof_lgbm, y_oof, y_test, constructor_ids=pair_ids
+    )
+    brier_logreg, _ = _calibrate_and_score(
+        raw_logreg, oof_logreg, y_oof, y_test, constructor_ids=pair_ids
+    )
     brier_ens = brier(y_test, (cal_xgb + cal_lgbm) / 2.0)
 
     return {

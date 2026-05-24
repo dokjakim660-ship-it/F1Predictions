@@ -18,9 +18,19 @@ from pathlib import Path
 import matplotlib
 import matplotlib.pyplot as plt
 import numpy as np
+import pandas as pd
 from sklearn.isotonic import IsotonicRegression
 
 matplotlib.use("Agg")  # headless backend -- write files, never open a window
+
+
+# Default floor/ceiling for the isotonic output. With ~2700 dev rows, high-prob
+# bins where every OOF example happened to be correct collapse to exactly 1.0
+# (mirror at the low end). That overstates confidence — a 100% F1 prediction
+# ignores DNF/safety-car risk, and a 0% prediction ignores chaos upside.
+# eps=0.02 clips both tails to [0.02, 0.98], which is ~50:1 odds — beyond what
+# bookmakers price anyway.
+DEFAULT_CALIB_EPS = 0.02
 
 
 @dataclass
@@ -30,13 +40,49 @@ class IsotonicCalibrator:
     iso: IsotonicRegression
 
     @classmethod
-    def fit(cls, y_prob: np.ndarray, y_true: np.ndarray) -> IsotonicCalibrator:
-        iso = IsotonicRegression(out_of_bounds="clip", y_min=0.0, y_max=1.0)
+    def fit(
+        cls,
+        y_prob: np.ndarray,
+        y_true: np.ndarray,
+        *,
+        eps: float = DEFAULT_CALIB_EPS,
+    ) -> IsotonicCalibrator:
+        iso = IsotonicRegression(out_of_bounds="clip", y_min=eps, y_max=1.0 - eps)
         iso.fit(np.asarray(y_prob, dtype=float), np.asarray(y_true, dtype=float))
         return cls(iso=iso)
 
     def transform(self, y_prob: np.ndarray) -> np.ndarray:
         return self.iso.transform(np.asarray(y_prob, dtype=float))
+
+
+def pair_normalize_teammate(
+    probs: np.ndarray,
+    constructor_ids: np.ndarray,
+) -> np.ndarray:
+    """Normalize per-driver teammate probabilities so each constructor pair sums to 1.
+
+    For the teammate target ("driver beats their team-mate"), the per-driver
+    isotonic calibrator treats each row independently — so a Mercedes pair can
+    end up at P(Russell)=1.00 + P(Antonelli)=0.42 = 1.42, which is logically
+    impossible (modulo double-DNF, ignored here). This rescales each pair so
+    that P_A + P_B = 1.
+
+    Constructors with !=2 rows (e.g., mid-season substitution leaves a single
+    row) are passed through unchanged — there is no pair to normalize against.
+    Pairs whose sum is 0 are also passed through (cannot divide by zero); that
+    only happens if both legs were calibrated to the floor.
+    """
+    probs = np.asarray(probs, dtype=float).copy()
+    constructor_ids = np.asarray(constructor_ids)
+    df = pd.DataFrame({"c": constructor_ids, "p": probs, "i": np.arange(len(probs))})
+    for _, grp in df.groupby("c", sort=False):
+        if len(grp) != 2:
+            continue
+        s = float(grp["p"].sum())
+        if s <= 0.0:
+            continue
+        probs[grp["i"].to_numpy()] = grp["p"].to_numpy() / s
+    return probs
 
 
 def ece(y_true: np.ndarray, y_prob: np.ndarray, n_bins: int = 10) -> float:
