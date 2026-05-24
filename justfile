@@ -85,12 +85,14 @@ ingest-next YEAR ROUND:
     uv run python -m src.ingest.fastf1_ingest next --year {{YEAR}} --round {{ROUND}}
     uv run python -m src.ingest.openmeteo_ingest next --year {{YEAR}} --round {{ROUND}}
 
-# Phase 3.2 next-race feature build. Rebuilds the FastF1 sessions L2 first so the
-# freshly ingested Q/FP2 lands in sessions.parquet, then synthesizes a pseudo-row
-# per driver for the target race and runs the full feature pipeline on top of it.
-# Writes data/features/next_race.parquet. Run AFTER `just ingest-next YEAR ROUND`.
+# Phase 3.2 next-race feature build. Rebuilds the FastF1 sessions + weather L2
+# first so freshly ingested Q/FP2 and the new forecast land in their parquets,
+# then synthesizes a pseudo-row per driver for the target race and runs the full
+# feature pipeline on top. Writes data/features/next_race.parquet.
+# Run AFTER `just ingest-next YEAR ROUND`.
 build-next-features YEAR ROUND:
     uv run python -m src.process.fastf1 build
+    uv run python -m src.process.openmeteo build
     uv run python -m src.features.next_race build --year {{YEAR}} --round {{ROUND}}
 
 # Phase 3.3 next-race inference: re-trains XGB+LGBM+LogReg on the full historical

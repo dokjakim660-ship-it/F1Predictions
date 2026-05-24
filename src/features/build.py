@@ -36,6 +36,7 @@ import pandas as pd
 
 from src.process.fastf1 import load_sessions
 from src.process.jolpica import load_results
+from src.process.openmeteo import load_weather
 from src.utils.paths import FEATURES_DIR
 from src.utils.race_inventory import load_inventory
 from src.utils.tracks import load_tracks, race_to_track_id
@@ -98,9 +99,24 @@ FEATURE_COLUMNS = [
     "track_is_street",
     # Driver x track history (lagged)
     "driver_track_finish_l3",
+    # Weather at race time (forecast pre-race, archive post-race -- see process/openmeteo)
+    "weather_temp_c_race_hour",
+    "weather_is_wet_race_hour",
+    "weather_precip_mm_day_total",
+    "weather_wind_kph_race_hour",
+    "weather_temp_c_day_max",
     # Season / era
     "season_progress",
     "era_2022plus",
+]
+
+_WEATHER_COLS = [
+    "race_id",
+    "weather_temp_c_race_hour",
+    "weather_is_wet_race_hour",
+    "weather_precip_mm_day_total",
+    "weather_wind_kph_race_hour",
+    "weather_temp_c_day_max",
 ]
 
 # String feature kept for native categorical handling (LightGBM) / one-hot
@@ -298,6 +314,16 @@ def _add_driver_track_history(df: pd.DataFrame) -> pd.DataFrame:
     return df.drop(columns=["_pp"])
 
 
+def _add_weather_features(df: pd.DataFrame, weather: pd.DataFrame) -> pd.DataFrame:
+    df = df.merge(weather[_WEATHER_COLS], on="race_id", how="left")
+    # is_wet stored as nullable bool/object -> cast to 0/1 float, NaN preserved
+    # so median-imputation can handle it downstream (mvp.py:fillna(medians)).
+    df["weather_is_wet_race_hour"] = df["weather_is_wet_race_hour"].map(
+        {True: 1.0, False: 0.0}
+    )
+    return df
+
+
 def _add_season_era(df: pd.DataFrame, inv: pd.DataFrame) -> pd.DataFrame:
     # Race number normalised by the season length, so "round 10" means the same
     # part of the year whether the calendar has 21 races or 24.
@@ -314,6 +340,7 @@ def compute_features(
     sessions: pd.DataFrame,
     inv: pd.DataFrame,
     tracks: pd.DataFrame,
+    weather: pd.DataFrame,
 ) -> pd.DataFrame:
     """Run the L2 -> L3 feature pipeline on pre-loaded tables.
 
@@ -336,6 +363,7 @@ def compute_features(
     df = _add_team_form(df)
     df = _add_track_features(df, inv, tracks)
     df = _add_driver_track_history(df)
+    df = _add_weather_features(df, weather)
     df = _add_season_era(df, inv)
 
     out_cols = _META_COLS + [TARGET_PODIUM, TARGET_TEAMMATE] + FEATURE_COLUMNS + CATEGORICAL_COLUMNS
@@ -344,7 +372,9 @@ def compute_features(
 
 
 def build_features() -> pd.DataFrame:
-    return compute_features(load_results(), load_sessions(), load_inventory(), load_tracks())
+    return compute_features(
+        load_results(), load_sessions(), load_inventory(), load_tracks(), load_weather()
+    )
 
 
 def save_features(df: pd.DataFrame, path: Path = FEATURES_PARQUET) -> Path:
