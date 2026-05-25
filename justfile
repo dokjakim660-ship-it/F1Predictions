@@ -165,6 +165,18 @@ build:
 show-features:
     uv run python -m src.features.build show
 
+# --- Phase 4 Post-race ROI ---
+
+# Sunday-evening workflow: ingest race results + evaluate ROI against saved odds.
+# Requires that odds were saved via the Stakes page before the race.
+post-race YEAR ROUND:
+    uv run python -m src.ingest.jolpica_ingest results --year {{YEAR}} --round {{ROUND}}
+    uv run python -m src.eval.roi run --year {{YEAR}} --round {{ROUND}}
+
+# Print ROI log summary
+roi-show:
+    uv run python -m src.eval.roi show
+
 # --- Phase 2 Streamlit app ---
 
 # Run the Streamlit app locally (browser opens automatically).

@@ -22,6 +22,8 @@ fraction (default 0.25) and by the bankroll to get the EUR stake.
 
 from __future__ import annotations
 
+import json
+import shutil
 from pathlib import Path
 
 import pandas as pd
@@ -29,6 +31,8 @@ import streamlit as st
 
 REPO = Path(__file__).resolve().parents[2]
 FEATURES_PATH = REPO / "data" / "features" / "next_race.parquet"
+ODDS_DIR = REPO / "data" / "odds"
+ARCHIVE_DIR = REPO / "predictions" / "archive"
 
 # Drop computed Kelly stakes below this EUR threshold from the output table.
 # Bookmaker minimums (Tipico etc.) are typically 1.00, so Kelly fractions
@@ -92,6 +96,29 @@ def _enrich_with_names(preds: pd.DataFrame) -> pd.DataFrame:
     return preds
 
 
+def _odds_path(race_id: str, target_short: str) -> Path:
+    return ODDS_DIR / f"{race_id}_{target_short}.json"
+
+
+def _load_saved_odds(race_id: str, target_short: str) -> dict[str, float]:
+    p = _odds_path(race_id, target_short)
+    if p.exists():
+        return json.loads(p.read_text())
+    return {}
+
+
+def _save_odds(race_id: str, target_short: str, odds_map: dict[str, float]) -> None:
+    ODDS_DIR.mkdir(parents=True, exist_ok=True)
+    _odds_path(race_id, target_short).write_text(json.dumps(odds_map, indent=2))
+
+
+def _archive_predictions(race_id: str, target_short: str) -> None:
+    src = REPO / "predictions" / f"next_race_{target_short}.parquet"
+    if src.exists():
+        ARCHIVE_DIR.mkdir(parents=True, exist_ok=True)
+        shutil.copy2(src, ARCHIVE_DIR / f"{race_id}_{target_short}.parquet")
+
+
 def _render_target_section(target_short: str, bankroll: float, kelly_frac: float) -> None:
     preds = _load_predictions(target_short)
     if preds.empty:
@@ -103,17 +130,22 @@ def _render_target_section(target_short: str, bankroll: float, kelly_frac: float
 
     preds = _enrich_with_names(preds)
     model_col = f"prob_{_DEFAULT_MODEL[target_short]}_cal"
+    race_id = str(preds.iloc[0]["race_id"])
+
+    # Pre-populate odds from previously saved values for this race.
+    saved_odds = _load_saved_odds(race_id, target_short)
 
     # Editor input: sorted by model probability so the most-likely (= usually
     # the most interesting to bet on) drivers are at the top of the table.
     editor_df = (
         pd.DataFrame(
             {
+                "driver_id": preds["driver_id"],
                 "driver": preds["driver_family_name"],
                 "team": preds["constructor_name"],
                 "grid": preds["grid"].astype(int),
-                "P": (preds[model_col] * 100).round(1),  # 0-100 scale for %.1f%% format
-                "odds": 0.0,
+                "P": (preds[model_col] * 100).round(1),
+                "odds": preds["driver_id"].map(lambda d: saved_odds.get(d, 0.0)),
             }
         )
         .sort_values("P", ascending=False)
@@ -123,6 +155,7 @@ def _render_target_section(target_short: str, bankroll: float, kelly_frac: float
     edited = st.data_editor(
         editor_df,
         column_config={
+            "driver_id": None,  # hidden — used for save key only
             "driver": st.column_config.TextColumn("driver", disabled=True),
             "team": st.column_config.TextColumn("team", disabled=True),
             "grid": st.column_config.NumberColumn("grid", disabled=True, format="%d"),
@@ -146,6 +179,23 @@ def _render_target_section(target_short: str, bankroll: float, kelly_frac: float
         num_rows="fixed",
         key=f"stakes_editor_{target_short}",
     )
+
+    # Save button — persists odds + archives predictions for post-race ROI eval.
+    if st.button(f"Save odds for {race_id}", key=f"save_odds_{target_short}"):
+        try:
+            odds_map = {
+                str(row["driver_id"]): float(row["odds"])
+                for _, row in edited.iterrows()
+                if float(row["odds"]) > 1.0
+            }
+            _save_odds(race_id, target_short, odds_map)
+            _archive_predictions(race_id, target_short)
+            st.success(
+                f"Saved {len(odds_map)} odds for {race_id} ({target_short}). "
+                "Predictions archived for post-race ROI eval."
+            )
+        except Exception as e:
+            st.error(f"Could not save (running on HF Spaces read-only fs?): {e}")
 
     # Compute per-row Kelly + stake. Convert P back to 0-1 scale for the formula.
     edited = edited.copy()

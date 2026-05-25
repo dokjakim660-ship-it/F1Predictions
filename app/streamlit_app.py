@@ -26,6 +26,11 @@ stakes_page = st.Page(
     title="Stakes",
     icon=":material/payments:",
 )
+roi_page = st.Page(
+    "app_pages/roi.py",
+    title="ROI Tracker",
+    icon=":material/trending_up:",
+)
 methodology_page = st.Page(
     "app_pages/methodology.py",
     title="Methodology",
@@ -43,7 +48,7 @@ importance_page = st.Page(
 )
 
 page = st.navigation(
-    [next_race_page, stakes_page, methodology_page, backtest_page, importance_page],
+    [next_race_page, stakes_page, roi_page, methodology_page, backtest_page, importance_page],
     position="top",
 )
 
