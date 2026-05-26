@@ -156,7 +156,7 @@ brier_display = pd.DataFrame(
         "ci_high": brier_df["brier_hi"].map(lambda x: f"{x:.4f}"),
     }
 )
-st.dataframe(brier_display, hide_index=True, width="stretch")
+st.dataframe(brier_display, hide_index=True, use_container_width=True)
 
 ci_chart = (
     alt.Chart(brier_df)
@@ -181,14 +181,14 @@ ci_points = (
         ],
     )
 )
-st.altair_chart((ci_chart + ci_points).properties(height=30 * len(brier_df) + 60), width="stretch")
+st.altair_chart((ci_chart + ci_points).properties(height=30 * len(brier_df) + 60), use_container_width=True)
 
 # --- Reliability plot (existing artefact) -------------------------------
 
 plot_path = REPO / "models" / f"reliability_mvp_{target_short}.png"
 if plot_path.exists():
     st.subheader("Reliability diagram (holdout test, calibrated)")
-    st.image(str(plot_path), width="stretch")
+    st.image(str(plot_path), use_container_width=True)
 
 # --- Brier trend across the holdout -------------------------------------
 
@@ -217,7 +217,7 @@ trend_chart = (
 )
 # NOTE: .interactive() removed — it captures scroll events inside the HF
 # Spaces iframe and causes the page to jump when the user scrolls past the chart.
-st.altair_chart(trend_chart, width="stretch")
+st.altair_chart(trend_chart, use_container_width=True)
 
 # --- Per-race drilldown -------------------------------------------------
 
@@ -257,7 +257,7 @@ per_race_table = pd.DataFrame(
         for name, b in sorted(per_race_briers.items(), key=lambda x: x[1])
     ]
 )
-st.dataframe(per_race_table, hide_index=True, width="stretch")
+st.dataframe(per_race_table, hide_index=True, use_container_width=True)
 
 # Per-driver wide table: rename long column headers + format probabilities as
 # percent strings to keep the table inside the iframe width on podium (6 model
