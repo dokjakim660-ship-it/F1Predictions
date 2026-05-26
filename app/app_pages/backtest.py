@@ -214,8 +214,9 @@ trend_chart = (
         ],
     )
     .properties(height=380)
-    .interactive()
 )
+# NOTE: .interactive() removed — it captures scroll events inside the HF
+# Spaces iframe and causes the page to jump when the user scrolls past the chart.
 st.altair_chart(trend_chart, width="stretch")
 
 # --- Per-race drilldown -------------------------------------------------
@@ -274,4 +275,14 @@ short_prob_cols = [_short(_model_name(c)) for c in prob_cols_cal]
 for col in short_prob_cols:
     display[col] = (display[col] * 100).map(lambda x: f"{x:.1f}%")
 display["actual"] = display["actual"].astype(int).map({1: "✓", 0: "—"})
-st.dataframe(display, hide_index=True, width="stretch")
+
+# Explicit column widths so the table never overflows the iframe and triggers
+# a horizontal scrollbar (which causes the whole-page "wackeln" on narrow HF
+# Spaces embeds, especially on podium with its extra top3-quali column).
+_col_cfg: dict[str, st.column_config.Column] = {
+    "driver": st.column_config.TextColumn("driver", width=90),
+    "actual": st.column_config.TextColumn("actual", width=50),
+}
+for col in short_prob_cols:
+    _col_cfg[col] = st.column_config.TextColumn(col, width=70)
+st.dataframe(display, hide_index=True, use_container_width=True, column_config=_col_cfg)
