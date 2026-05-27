@@ -29,6 +29,10 @@ def logloss(y_true: np.ndarray, y_prob: np.ndarray) -> float:
     return float(log_loss(y_true, p, labels=[0, 1]))
 
 
+def mae(y_true: np.ndarray, y_prob: np.ndarray) -> float:
+    return float(np.mean(np.abs(np.asarray(y_true, dtype=float) - np.asarray(y_prob, dtype=float))))
+
+
 def top3_accuracy_per_race(
     race_ids: pd.Series,
     y_true: np.ndarray,
@@ -69,6 +73,7 @@ def summary(
     return {
         "model": name,
         "brier": brier(y_true, y_prob),
+        "mae": mae(y_true, y_prob),
         "log_loss": logloss(y_true, y_prob),
         "top3_acc": top3_accuracy_per_race(race_ids, y_true, y_prob),
         "n_obs": int(len(y_true)),
@@ -78,7 +83,7 @@ def summary(
 
 def format_summary_row(s: dict[str, float]) -> str:
     return (
-        f"{s['model']:<28s}  brier={s['brier']:.4f}  "
+        f"{s['model']:<28s}  brier={s['brier']:.4f}  mae={s['mae']:.4f}  "
         f"log_loss={s['log_loss']:.4f}  top3_acc={s['top3_acc']:.3f}  "
         f"n_obs={s['n_obs']}  n_races={s['n_races']}"
     )

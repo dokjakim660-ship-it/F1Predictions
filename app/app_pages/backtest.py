@@ -156,7 +156,19 @@ brier_display = pd.DataFrame(
         "ci_high": brier_df["brier_hi"].map(lambda x: f"{x:.4f}"),
     }
 )
-st.dataframe(brier_display, hide_index=True, use_container_width=True)
+# Pin column widths so podium (6 models, longer logreg label) doesnt auto-size
+# differently from teammate and trigger horizontal-scroll wackeln.
+st.dataframe(
+    brier_display,
+    hide_index=True,
+    use_container_width=True,
+    column_config={
+        "model": st.column_config.TextColumn("model", width=110),
+        "brier": st.column_config.TextColumn("brier", width=80),
+        "ci_low": st.column_config.TextColumn("ci_low", width=80),
+        "ci_high": st.column_config.TextColumn("ci_high", width=80),
+    },
+)
 
 ci_chart = (
     alt.Chart(brier_df)
@@ -188,7 +200,12 @@ st.altair_chart((ci_chart + ci_points).properties(height=30 * len(brier_df) + 60
 plot_path = REPO / "models" / f"reliability_mvp_{target_short}.png"
 if plot_path.exists():
     st.subheader("Reliability diagram (holdout test, calibrated)")
-    st.image(str(plot_path), use_container_width=True)
+    # Fixed width on purpose. With use_container_width=True the image height
+    # scales with the iframe width; a 1px width fluctuation propagates into
+    # a height fluctuation, Streamlit reports a new iframe height to HF, HF
+    # resizes, the cycle repeats -- continuous mouse-independent wackeln.
+    # Fixed pixel width pins the height too, breaking the loop.
+    st.image(str(plot_path), width=720)
 
 # --- Brier trend across the holdout -------------------------------------
 
@@ -205,7 +222,14 @@ trend_chart = (
     .encode(
         x=alt.X("race_date:T", title="Race date"),
         y=alt.Y("brier:Q", title="Per-race Brier"),
-        color=alt.Color("model:N", title="Model", legend=alt.Legend(orient="bottom")),
+        # columns=3 pins the legend to exactly 2 rows for podium (6 models) and
+        # 2 rows for teammate (4-5 models). Without this, narrow viewports wrap
+        # the legend from 1 -> 2 rows as the iframe width fluctuates, which
+        # changes chart height and triggers vertical wackeln.
+        color=alt.Color(
+            "model:N", title="Model",
+            legend=alt.Legend(orient="bottom", columns=3),
+        ),
         tooltip=[
             alt.Tooltip("gp_name:N", title="Grand Prix"),
             alt.Tooltip("race_date:T", title="Date"),
@@ -257,7 +281,15 @@ per_race_table = pd.DataFrame(
         for name, b in sorted(per_race_briers.items(), key=lambda x: x[1])
     ]
 )
-st.dataframe(per_race_table, hide_index=True, use_container_width=True)
+st.dataframe(
+    per_race_table,
+    hide_index=True,
+    use_container_width=True,
+    column_config={
+        "model": st.column_config.TextColumn("model", width=120),
+        "race brier": st.column_config.TextColumn("race brier", width=100),
+    },
+)
 
 # Per-driver wide table: rename long column headers + format probabilities as
 # percent strings to keep the table inside the iframe width on podium (6 model

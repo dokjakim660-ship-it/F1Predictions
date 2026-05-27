@@ -62,6 +62,9 @@ SYNC_PLAN: list[tuple[str | tuple[str, ...], str, str]] = [
     (("models/reliability_mvp_*.png",), "models", "globs"),
     ("data/reference/race_inventory.parquet", "data/reference/race_inventory.parquet", "file"),
     ("data/features/next_race.parquet", "data/features/next_race.parquet", "file"),
+    # Feature Distribution page reads the full feature table to render per-feature
+    # histograms; ~190 KB, safe to ship.
+    ("data/features/mvp.parquet", "data/features/mvp.parquet", "file"),
 ]
 
 
