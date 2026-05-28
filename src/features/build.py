@@ -138,6 +138,22 @@ CATEGORICAL_COLUMNS = ["track_id"]
 TARGET_PODIUM = "target_podium"
 TARGET_TEAMMATE = "target_beat_teammate"
 
+# Phase 4.2 pre-quali targets, all derived from final qualifying position. Kept
+# in dedicated target columns (separate from quali_beat_teammate the feature)
+# so pre-quali models can train on the target without the feature accidentally
+# leaking the answer; pre-race models keep using the feature as before.
+TARGET_POLE = "target_pole"
+TARGET_TOP3_QUALI = "target_top3_quali"
+TARGET_TOP10_QUALI = "target_top10_quali"
+TARGET_QUALI_BEAT_TEAMMATE = "target_quali_beat_teammate"
+
+QUALI_TARGETS = [
+    TARGET_POLE,
+    TARGET_TOP3_QUALI,
+    TARGET_TOP10_QUALI,
+    TARGET_QUALI_BEAT_TEAMMATE,
+]
+
 _META_COLS = [
     "race_id",
     "year",
@@ -226,6 +242,38 @@ def _add_quali_features(df: pd.DataFrame) -> pd.DataFrame:
     beat[df["q_position"] == worst] = 0.0
     beat[(n_cars != 2) | df["q_position"].isna() | (best == worst)] = np.nan
     df["quali_beat_teammate"] = beat
+    return df
+
+
+def _add_quali_targets(df: pd.DataFrame) -> pd.DataFrame:
+    """Phase 4.2 pre-quali targets, derived from final qualifying position.
+
+    All four are NaN where q_position itself is NaN (driver didn't set a quali
+    time -- DNQ, withdrawal). Pole/Top3/Top10 are binary 0/1; teammate mirrors
+    the quali_beat_teammate feature (same logic, kept as a separate target so
+    the feature/target boundary stays explicit).
+
+    FastF1's q_position occasionally ties two drivers on the same slot and skips
+    the next one (~4 of 178 races, e.g. 2024 R15 puts both Albon and Sainz on
+    P10). A naive `q_position <= N` then yields N+1 "top-N" drivers. So we
+    re-rank within each race -- official position dominates, gap-to-pole breaks
+    the tie -- so "top N in qualifying" always resolves to exactly N drivers.
+
+    Must run AFTER _add_quali_features, since both q_position and the
+    quali_beat_teammate feature are produced there.
+    """
+    # Combined sort key: q_position * 1e7 dominates, gap-to-pole (max ~3.6s in
+    # the data, << 1e7) breaks ties deterministically. NaN gap -> 1e6 (sorts to
+    # the back of its position slot, harmless). rank(method="first") yields a
+    # gap-free 1..N ranking; NaN q_position propagates to a NaN rank -> NaN target.
+    sort_key = df["q_position"] * 1e7 + df["q_gap_to_pole_ms"].fillna(1e6)
+    q_rank = sort_key.groupby(df["race_id"], sort=False).rank(method="first")
+    defined = q_rank.notna()
+
+    df[TARGET_POLE] = q_rank.eq(1).astype(float).where(defined)
+    df[TARGET_TOP3_QUALI] = q_rank.le(3).astype(float).where(defined)
+    df[TARGET_TOP10_QUALI] = q_rank.le(10).astype(float).where(defined)
+    df[TARGET_QUALI_BEAT_TEAMMATE] = df["quali_beat_teammate"]
     return df
 
 
@@ -372,9 +420,7 @@ def _add_weather_features(df: pd.DataFrame, weather: pd.DataFrame) -> pd.DataFra
     df = df.merge(weather[_WEATHER_COLS], on="race_id", how="left")
     # is_wet stored as nullable bool/object -> cast to 0/1 float, NaN preserved
     # so median-imputation can handle it downstream (mvp.py:fillna(medians)).
-    df["weather_is_wet_race_hour"] = df["weather_is_wet_race_hour"].map(
-        {True: 1.0, False: 0.0}
-    )
+    df["weather_is_wet_race_hour"] = df["weather_is_wet_race_hour"].map({True: 1.0, False: 0.0})
     return df
 
 
@@ -413,6 +459,7 @@ def compute_features(
     df = _add_grid_features(df)
     df = _add_driver_age(df)
     df = _add_quali_features(df)
+    df = _add_quali_targets(df)
     df = _add_fp2_features(df)
     df = _add_sprint_features(df)
     df = _add_driver_form(df)
@@ -423,7 +470,13 @@ def compute_features(
     df = _add_weather_features(df, weather)
     df = _add_season_era(df, inv)
 
-    out_cols = _META_COLS + [TARGET_PODIUM, TARGET_TEAMMATE] + FEATURE_COLUMNS + CATEGORICAL_COLUMNS
+    out_cols = (
+        _META_COLS
+        + [TARGET_PODIUM, TARGET_TEAMMATE]
+        + QUALI_TARGETS
+        + FEATURE_COLUMNS
+        + CATEGORICAL_COLUMNS
+    )
     df = df[out_cols].sort_values(["year", "round", "driver_id"]).reset_index(drop=True)
     return df
 
@@ -456,6 +509,10 @@ def _print_summary(df: pd.DataFrame) -> None:
         f"[features.build] teammate target defined: "
         f"{df[TARGET_TEAMMATE].notna().mean():.1%} of rows"
     )
+    for t in QUALI_TARGETS:
+        defined = df[t].notna().mean()
+        rate = df[t].mean()
+        print(f"[features.build] {t}: rate {rate:.3f} (defined {defined:.1%} of rows)")
     print(f"[features.build] FastF1 quali join matched: {matched:.1%} of rows")
     print(f"[features.build] has_fp2: {df['has_fp2'].mean():.1%} of rows")
     high_nan = {
