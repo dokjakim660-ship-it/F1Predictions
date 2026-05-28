@@ -118,13 +118,18 @@ def prepare_dev_test(target_col: str) -> tuple[pd.DataFrame, pd.DataFrame]:
     return split_dev_test(df)
 
 
-def _logreg_matrix(df: pd.DataFrame, medians: pd.Series) -> np.ndarray:
+def _logreg_matrix(
+    df: pd.DataFrame, medians: pd.Series, numeric_features: list[str] = NUMERIC_FEATURES
+) -> np.ndarray:
     """Median-imputed numeric features + one-hot track_id as a float ndarray.
 
     track_id is a category dtype, so get_dummies emits identical columns in
     identical order for any slice -- train and val matrices stay aligned.
+
+    numeric_features defaults to the full MVP set; Phase 4.2 pre-quali models
+    pass a reduced set (no grid/quali features) instead.
     """
-    numeric = df[NUMERIC_FEATURES].fillna(medians)
+    numeric = df[numeric_features].fillna(medians)
     dummies = pd.get_dummies(df["track_id"], prefix="trk").astype(float)
     return pd.concat([numeric, dummies], axis=1).to_numpy()
 
@@ -165,11 +170,12 @@ def make_logreg_fit_predict(
     target_col: str = TARGET_PODIUM,
     *,
     decay_per_month: float | None = None,
+    numeric_features: list[str] = NUMERIC_FEATURES,
 ) -> FitPredictFn:
     def fit_predict(train: pd.DataFrame, val: pd.DataFrame) -> np.ndarray:
-        medians = train[NUMERIC_FEATURES].median(numeric_only=True)
-        x_train = _logreg_matrix(train, medians)
-        x_val = _logreg_matrix(val, medians)
+        medians = train[numeric_features].median(numeric_only=True)
+        x_train = _logreg_matrix(train, medians, numeric_features)
+        x_val = _logreg_matrix(val, medians, numeric_features)
         scaler = StandardScaler().fit(x_train)
         weights = (
             compute_time_decay_weights(train["race_date"], decay_per_month)
@@ -199,7 +205,10 @@ def make_default_xgb_fit_predict(
     target_col: str = TARGET_PODIUM,
     *,
     decay_per_month: float | None = None,
+    numeric_features: list[str] = NUMERIC_FEATURES,
 ) -> FitPredictFn:
+    tree_features = list(numeric_features) + CATEGORICAL_COLUMNS
+
     def fit_predict(train: pd.DataFrame, val: pd.DataFrame) -> np.ndarray:
         model = xgb.XGBClassifier(
             **_XGB_DEFAULT_PARAMS,
@@ -213,8 +222,8 @@ def make_default_xgb_fit_predict(
             if decay_per_month is not None
             else None
         )
-        model.fit(train[TREE_FEATURES], train[target_col].astype(int), sample_weight=weights)
-        return model.predict_proba(val[TREE_FEATURES])[:, 1]
+        model.fit(train[tree_features], train[target_col].astype(int), sample_weight=weights)
+        return model.predict_proba(val[tree_features])[:, 1]
 
     return fit_predict
 
@@ -234,7 +243,10 @@ def make_default_lgbm_fit_predict(
     target_col: str = TARGET_PODIUM,
     *,
     decay_per_month: float | None = None,
+    numeric_features: list[str] = NUMERIC_FEATURES,
 ) -> FitPredictFn:
+    tree_features = list(numeric_features) + CATEGORICAL_COLUMNS
+
     def fit_predict(train: pd.DataFrame, val: pd.DataFrame) -> np.ndarray:
         model = lgb.LGBMClassifier(
             **_LGBM_DEFAULT_PARAMS,
@@ -248,8 +260,8 @@ def make_default_lgbm_fit_predict(
             else None
         )
         # LightGBM auto-detects the pandas category column as a categorical feature.
-        model.fit(train[TREE_FEATURES], train[target_col].astype(int), sample_weight=weights)
-        return model.predict_proba(val[TREE_FEATURES])[:, 1]
+        model.fit(train[tree_features], train[target_col].astype(int), sample_weight=weights)
+        return model.predict_proba(val[tree_features])[:, 1]
 
     return fit_predict
 
