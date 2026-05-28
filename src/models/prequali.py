@@ -164,6 +164,68 @@ def evaluate_mode_target(mode: str, target_short: str) -> list[PQEval]:
     ]
 
 
+# Models eligible for per-target selection. RecentQualiForm is included on
+# purpose: for a very rare target like pole the 1-feature baseline can genuinely
+# be the best deployable choice, and forcing a more complex model that does not
+# predict any better would be worse.
+_SELECTABLE = ("RecentQualiForm", "LogisticRegression", "XGBoost", "LightGBM", "Ensemble")
+
+
+def dev_briers(mode: str, target_short: str) -> dict[str, float]:
+    """Walk-forward Brier on the DEV set for every selectable model.
+
+    Model selection must never touch the holdout test set -- selecting on it
+    turns the "sealed" set into a selection set and biases the final estimate.
+    So the best-model pick is made here on dev OOF predictions; the holdout in
+    evaluate_mode_target only confirms it afterwards.
+    """
+    target_col = PRE_QUALI_TARGETS[target_short]
+    numeric_features = PRE_QUALI_FEATURE_SETS[mode]
+    dev, _ = prepare_dev_test(target_col)
+
+    oof_by = {
+        name: oof_predictions(dev, fit_predict, target_col=target_col)
+        for name, fit_predict in _specs(target_col, numeric_features)
+        if name != "ConstantRate"
+    }
+    # All models share the same fold order, so y_true is identical across them.
+    y_true = oof_by["LogisticRegression"].y_true
+    briers = {name: brier(o.y_true, o.y_prob) for name, o in oof_by.items()}
+    ens_prob = (oof_by["XGBoost"].y_prob + oof_by["LightGBM"].y_prob) / 2.0
+    briers["Ensemble"] = brier(y_true, ens_prob)
+    return briers
+
+
+def select_best(mode: str, target_short: str) -> tuple[str, float]:
+    """Best model for one (mode, target) by dev walk-forward Brier."""
+    briers = dev_briers(mode, target_short)
+    name = min(_SELECTABLE, key=lambda n: briers[n])
+    return name, briers[name]
+
+
+def run_select(mode: str, target_short: str) -> int:
+    modes = ["pre_weekend", "post_fp2"] if mode == "both" else [mode]
+    targets = list(PRE_QUALI_TARGETS) if target_short == "all" else [target_short]
+    print("=" * 100)
+    print("Pre-quali model selection -- DEV walk-forward Brier (holdout untouched)")
+    print("=" * 100)
+    header = f"{'mode':<12s}  {'target':<16s}  " + "  ".join(f"{n:>15s}" for n in _SELECTABLE)
+    print(header)
+    print("-" * 100)
+    for t in targets:
+        for m in modes:
+            briers = dev_briers(m, t)
+            best = min(_SELECTABLE, key=lambda n: briers[n])
+            cells = "  ".join(
+                (f"*{briers[n]:.4f}*" if n == best else f" {briers[n]:.4f} ").rjust(15)
+                for n in _SELECTABLE
+            )
+            print(f"{m:<12s}  {t:<16s}  {cells}")
+    print("=" * 100)
+    print("* = lowest dev Brier (selected). Confirm on holdout with `prequali eval`.")
+    return 0
+
+
 def _print_target_block(target_short: str, modes: list[str], test_meta: pd.DataFrame) -> None:
     target_col = PRE_QUALI_TARGETS[target_short]
     y_true = test_meta[target_col].astype(int).to_numpy()
@@ -235,23 +297,29 @@ def run(mode: str, target_short: str) -> int:
 def main(argv: list[str] | None = None) -> int:
     p = argparse.ArgumentParser(description=__doc__)
     sub = p.add_subparsers(dest="cmd", required=True)
-    ev = sub.add_parser("eval", help="Walk-forward + holdout Brier for pre-quali models.")
-    ev.add_argument(
-        "--mode",
-        choices=("pre_weekend", "post_fp2", "both"),
-        default=DEFAULT_MODE,
-        help=f"Timing mode (default: {DEFAULT_MODE}).",
-    )
-    ev.add_argument(
-        "--target",
-        choices=(*PRE_QUALI_TARGETS, "all"),
-        default="all",
-        help="Quali target (default: all).",
-    )
+    for cmd, helptext in (
+        ("eval", "Walk-forward + holdout Brier for pre-quali models."),
+        ("select", "Best model per (mode, target) by DEV Brier (holdout untouched)."),
+    ):
+        sp = sub.add_parser(cmd, help=helptext)
+        sp.add_argument(
+            "--mode",
+            choices=("pre_weekend", "post_fp2", "both"),
+            default=DEFAULT_MODE,
+            help=f"Timing mode (default: {DEFAULT_MODE}).",
+        )
+        sp.add_argument(
+            "--target",
+            choices=(*PRE_QUALI_TARGETS, "all"),
+            default="all",
+            help="Quali target (default: all).",
+        )
     args = p.parse_args(argv)
 
     if args.cmd == "eval":
         return run(args.mode, args.target)
+    if args.cmd == "select":
+        return run_select(args.mode, args.target)
     return 0
 
 
