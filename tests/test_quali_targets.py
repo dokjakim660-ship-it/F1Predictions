@@ -14,7 +14,10 @@ import pandas as pd
 import pytest
 
 from src.features.build import (
+    FEATURE_COLUMNS_POST_FP2,
+    FEATURE_COLUMNS_PRE_WEEKEND,
     FEATURES_PARQUET,
+    PRE_QUALI_FEATURE_SETS,
     QUALI_TARGETS,
     TARGET_POLE,
     TARGET_QUALI_BEAT_TEAMMATE,
@@ -132,3 +135,48 @@ def test_all_quali_targets_present_in_table() -> None:
     df = _load_features_or_skip()
     missing = [t for t in QUALI_TARGETS if t not in df.columns]
     assert not missing, f"quali targets missing from mvp.parquet: {missing}"
+
+
+# --- Phase 4.2.1 pre-quali feature-set guards --------------------------------
+
+# Anything produced by qualifying, grid, or the sprint -- none of it may appear
+# in a pre-quali feature set, since the race weekend hasn't happened yet.
+_BANNED_PRE_QUALI = (
+    "grid_effective",
+    "grid_log",
+    "is_pole",
+    "is_top3_grid",
+    "q_position",
+    "q_gap_to_pole_ms",
+    "quali_beat_teammate",
+    "sprint_position",
+    "sprint_gap_to_winner_ms",
+    "sprint_minus_quali_pos",
+    "has_sprint",
+)
+
+
+def test_pre_quali_feature_sets_exclude_weekend_data() -> None:
+    """No grid / quali / sprint feature may leak into either pre-quali set."""
+    for mode, fset in PRE_QUALI_FEATURE_SETS.items():
+        leaked = [c for c in _BANNED_PRE_QUALI if c in fset]
+        assert not leaked, f"{mode} feature set leaks weekend data: {leaked}"
+
+
+def test_pre_weekend_excludes_fp2_post_fp2_includes_it() -> None:
+    """The only difference between the two sets is FP2 pace."""
+    fp2 = ("fp2_long_run_gap_ms", "fp2_short_run_gap_ms", "fp2_long_run_lap_count", "has_fp2")
+    for col in fp2:
+        assert col not in FEATURE_COLUMNS_PRE_WEEKEND, f"{col} should not be in pre_weekend"
+        assert col in FEATURE_COLUMNS_POST_FP2, f"{col} should be in post_fp2"
+    # post_fp2 == pre_weekend + the four FP2 features, nothing else.
+    assert set(FEATURE_COLUMNS_POST_FP2) - set(FEATURE_COLUMNS_PRE_WEEKEND) == set(fp2)
+
+
+def test_pre_quali_feature_sets_are_nonempty_and_in_table() -> None:
+    """Both sets must be non-empty and every column must exist in mvp.parquet."""
+    df = _load_features_or_skip()
+    for mode, fset in PRE_QUALI_FEATURE_SETS.items():
+        assert fset, f"{mode} feature set is empty"
+        missing = [c for c in fset if c not in df.columns]
+        assert not missing, f"{mode} references columns not in mvp.parquet: {missing}"

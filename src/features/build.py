@@ -136,6 +136,59 @@ _WEATHER_COLS = [
 # (XGBoost). Out of FEATURE_COLUMNS because it cannot go through a scaler.
 CATEGORICAL_COLUMNS = ["track_id"]
 
+# --- Phase 4.2 pre-quali feature sets ------------------------------------
+# Two reduced views of FEATURE_COLUMNS for models that predict BEFORE qualifying
+# has happened. Derived (not re-declared) so they stay in sync as the base set
+# evolves. The pre-race FEATURE_COLUMNS above is unchanged -- pre-race models
+# keep seeing grid + quali.
+
+# Produced by the qualifying session itself (grid slot + quali timing). Illegal
+# for any pre-quali model -- this is exactly what we are trying to predict.
+_QUALI_DERIVED_FEATURES = [
+    "grid_effective",
+    "grid_log",
+    "is_pole",
+    "is_top3_grid",
+    "q_position",
+    "q_gap_to_pole_ms",
+    "quali_beat_teammate",
+    "sprint_minus_quali_pos",  # derived from q_position
+]
+
+# FP2 long-run pace: knowable Friday night (post-FP2) but not before the
+# weekend starts. The dividing line between the two pre-quali views.
+_FP2_FEATURES = [
+    "fp2_long_run_gap_ms",
+    "fp2_short_run_gap_ms",
+    "fp2_long_run_lap_count",
+    "has_fp2",
+]
+
+# Sprint result: the sprint runs Saturday morning -- after the pre-weekend cut
+# and, on a normal weekend, after the post-FP2 cut too. Excluded from both
+# pre-quali sets for a consistent timing contract. (Sprint pace as a pre-quali
+# signal on sprint weekends is a possible later refinement.)
+_SPRINT_FEATURES = [
+    "sprint_position",
+    "sprint_gap_to_winner_ms",
+    "has_sprint",
+]
+
+# Post-FP2: everything except quali-derived and sprint features (keeps FP2).
+FEATURE_COLUMNS_POST_FP2 = [
+    c for c in FEATURE_COLUMNS if c not in set(_QUALI_DERIVED_FEATURES + _SPRINT_FEATURES)
+]
+
+# Pre-weekend: also drop FP2 -- nothing from the race weekend at all.
+FEATURE_COLUMNS_PRE_WEEKEND = [c for c in FEATURE_COLUMNS_POST_FP2 if c not in set(_FP2_FEATURES)]
+
+# Pre-quali feature sets keyed by mode name -- the predict/eval drivers iterate
+# over this so a new mode is added in one place.
+PRE_QUALI_FEATURE_SETS = {
+    "pre_weekend": FEATURE_COLUMNS_PRE_WEEKEND,
+    "post_fp2": FEATURE_COLUMNS_POST_FP2,
+}
+
 TARGET_PODIUM = "target_podium"
 TARGET_TEAMMATE = "target_beat_teammate"
 
