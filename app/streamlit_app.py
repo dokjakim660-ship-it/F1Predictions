@@ -88,6 +88,11 @@ next_race_page = st.Page(
     icon=":material/flag:",
     default=True,
 )
+pre_quali_page = st.Page(
+    "app_pages/pre_quali.py",
+    title="Pre-Quali",
+    icon=":material/timer:",
+)
 stakes_page = st.Page(
     "app_pages/stakes.py",
     title="Stakes",
@@ -120,7 +125,16 @@ feature_dist_page = st.Page(
 )
 
 page = st.navigation(
-    [next_race_page, stakes_page, roi_page, methodology_page, backtest_page, importance_page, feature_dist_page],
+    [
+        next_race_page,
+        pre_quali_page,
+        stakes_page,
+        roi_page,
+        methodology_page,
+        backtest_page,
+        importance_page,
+        feature_dist_page,
+    ],
     position="top",
 )
 
