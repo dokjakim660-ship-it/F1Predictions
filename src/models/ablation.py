@@ -73,10 +73,18 @@ class VariantSpec:
 def _make_variants() -> list[VariantSpec]:
     return [
         VariantSpec("Full (baseline)", drop_features=[], decay_per_month=DEFAULT_DECAY_PER_MONTH),
-        VariantSpec("- weather", drop_features=WEATHER_FEATS, decay_per_month=DEFAULT_DECAY_PER_MONTH),
-        VariantSpec("- sprint", drop_features=SPRINT_FEATS, decay_per_month=DEFAULT_DECAY_PER_MONTH),
-        VariantSpec("- WCC standings", drop_features=WCC_FEATS, decay_per_month=DEFAULT_DECAY_PER_MONTH),
-        VariantSpec("- era_2026plus", drop_features=ERA_2026_FEATS, decay_per_month=DEFAULT_DECAY_PER_MONTH),
+        VariantSpec(
+            "- weather", drop_features=WEATHER_FEATS, decay_per_month=DEFAULT_DECAY_PER_MONTH
+        ),
+        VariantSpec(
+            "- sprint", drop_features=SPRINT_FEATS, decay_per_month=DEFAULT_DECAY_PER_MONTH
+        ),
+        VariantSpec(
+            "- WCC standings", drop_features=WCC_FEATS, decay_per_month=DEFAULT_DECAY_PER_MONTH
+        ),
+        VariantSpec(
+            "- era_2026plus", drop_features=ERA_2026_FEATS, decay_per_month=DEFAULT_DECAY_PER_MONTH
+        ),
         VariantSpec("- time-decay weights", drop_features=[], decay_per_month=None),
     ]
 
@@ -289,7 +297,9 @@ def run_variant(
     y_test = test[target_col].astype(int).to_numpy()
 
     # Train + raw predict on test
-    raw_xgb = _xgb_train_predict(dev, test, numeric, target_col, variant.decay_per_month, target_short)
+    raw_xgb = _xgb_train_predict(
+        dev, test, numeric, target_col, variant.decay_per_month, target_short
+    )
     raw_lgbm = _lgbm_train_predict(
         dev, test, numeric, target_col, variant.decay_per_month, target_short
     )
@@ -299,9 +309,7 @@ def run_variant(
     oof_xgb, y_oof = _oof_predict_xgb(
         dev, numeric, target_col, variant.decay_per_month, target_short
     )
-    oof_lgbm, _ = _oof_predict_lgbm(
-        dev, numeric, target_col, variant.decay_per_month, target_short
-    )
+    oof_lgbm, _ = _oof_predict_lgbm(dev, numeric, target_col, variant.decay_per_month, target_short)
     oof_logreg, _ = _oof_predict_logreg(dev, numeric, target_col, variant.decay_per_month)
 
     # For teammate, couple constructor pairs (P_A + P_B = 1) on cal probs before
@@ -331,13 +339,15 @@ def _print_table(target_short: str, results: list[tuple[str, dict[str, float]]])
     print()
     print("=" * 88)
     print(f"Phase 3.6 ablation -- target = {target_short}")
-    print(f"Lower brier_cal = better. Delta vs baseline (positive = feature helped).")
+    print("Lower brier_cal = better. Delta vs baseline (positive = feature helped).")
     print("=" * 88)
     print(f"{'Variant':<28s}  {'XGB':>9s}  {'LGBM':>9s}  {'LogReg':>9s}  {'Ensemble':>9s}")
     print("-" * 88)
     for name, m in results:
-        delta = "" if name == results[0][0] else (
-            f"  d_ens={m['ensemble'] - baseline['ensemble']:+.4f}"
+        delta = (
+            ""
+            if name == results[0][0]
+            else (f"  d_ens={m['ensemble'] - baseline['ensemble']:+.4f}")
         )
         print(
             f"{name:<28s}  {m['xgb']:>9.4f}  {m['lgbm']:>9.4f}  {m['logreg']:>9.4f}  "

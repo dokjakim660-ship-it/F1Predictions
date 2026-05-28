@@ -110,15 +110,30 @@ def test_rolling_features_have_no_lookahead() -> None:
     assert (first_race["driver_career_races"] == 0).all()
 
 
-def test_pre_race_uses_forecast_not_actual_weather() -> None:
-    """The MVP feature set carries no actual-weather columns.
+def test_future_race_weather_is_forecast_not_archive() -> None:
+    """Weather features are pre-race legal only because a not-yet-run race pulls
+    a forecast, never the actual race-hour archive -- the archive would leak the
+    very conditions the race is run in. The L2 weather table tags each row
+    forecast/archive; every future race must be forecast-sourced.
 
-    Only race-hour *actuals* exist in weather.parquet; using them in a pre-race
-    model would leak. Weather is deferred until a forecast ingest exists -- this
-    guard fails loudly if a weather_* feature is added to the set before then.
+    (Phase 3.6 replaced the old "no weather features at all" guard: weather is
+    now in the feature set, sourced from a forecast for the upcoming race and
+    from the archive for historical training rows.)
     """
-    leaked = [c for c in FEATURE_COLUMNS if c.startswith("weather_")]
-    assert not leaked, f"actual-weather features leaked into the MVP set: {leaked}"
+    weather = _load_or_skip(WEATHER_PARQUET)
+    assert "weather_source" in weather.columns, "weather.parquet missing forecast/archive tag"
+    unexpected = set(weather["weather_source"].unique()) - {"forecast", "archive"}
+    assert not unexpected, f"unexpected weather_source values: {unexpected}"
+
+    inv = _load_or_skip(INVENTORY_PATH)[["race_id", "race_date"]]
+    df = weather.merge(inv, on="race_id", how="left")
+    today = date.today()
+    future = df[pd.to_datetime(df["race_date"]).dt.date > today]
+    leaked = future[future["weather_source"] != "forecast"]
+    assert leaked.empty, (
+        f"{len(leaked)} future races carry actual-archive weather (leak): "
+        f"{leaked['race_id'].tolist()[:5]}"
+    )
 
 
 def test_team_features_follow_team_not_driver_after_switch() -> None:

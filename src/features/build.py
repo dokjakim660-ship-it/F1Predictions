@@ -10,9 +10,10 @@ model consumes. Joins onto the Jolpica results spine:
 Pre-race contract: every feature is knowable on Saturday evening -- after
 qualifying, before the race. Current-race RESULT columns (finish_position,
 dnf, points, race-pace) feed only the targets and the .shift(1)-lagged rolling
-history; they are never a feature for their own race. Weather is excluded from
-the MVP on purpose: the only weather we have is the actual race-hour reading,
-which would leak. It returns as its own increment once a forecast ingest lands.
+history; they are never a feature for their own race. Weather joins the feature
+set as a forecast for the upcoming race (pre-race legal) and as the race-hour
+archive for historical training rows -- see process/openmeteo and the
+test_no_leakage forecast guard.
 
 Cross-track comparability: raw lap times (q_best_ms, FP2 medians) are NOT
 comparable between circuits, so only GAP features are emitted -- a 0.3s gap to

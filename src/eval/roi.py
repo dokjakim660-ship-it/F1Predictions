@@ -17,7 +17,6 @@ from __future__ import annotations
 import argparse
 import json
 import sys
-from pathlib import Path
 
 import pandas as pd
 
@@ -95,6 +94,7 @@ def evaluate_race(
             pos = _actual_positions(race_id)
             # teammate pairs from constructor_id in the predictions
             from collections import defaultdict
+
             by_team: dict[str, list[str]] = defaultdict(list)
             for _, r in preds.iterrows():
                 by_team[r["constructor_id"]].append(r["driver_id"])
@@ -192,7 +192,9 @@ def main(argv: list[str] | None = None) -> int:
         if df.empty:
             print("[roi] no bets to record — odds saved for this race?")
             return 0
-        print(df[["driver_id", "target", "odds", "edge", "stake_eur", "won", "pnl_eur"]].to_string())
+        print(
+            df[["driver_id", "target", "odds", "edge", "stake_eur", "won", "pnl_eur"]].to_string()
+        )
         append_to_log(df)
 
     elif args.cmd == "show":
@@ -205,7 +207,10 @@ def main(argv: list[str] | None = None) -> int:
         roi = total_pnl / total_stake * 100 if total_stake > 0 else 0.0
         win_rate = df["won"].mean() * 100
         print(f"[roi] {len(df)} bets across {df['race_id'].nunique()} races")
-        print(f"      staked: €{total_stake:.2f}  P&L: €{total_pnl:+.2f}  ROI: {roi:+.1f}%  win rate: {win_rate:.0f}%")
+        print(
+            f"      staked: €{total_stake:.2f}  P&L: €{total_pnl:+.2f}  "
+            f"ROI: {roi:+.1f}%  win rate: {win_rate:.0f}%"
+        )
 
     return 0
 
