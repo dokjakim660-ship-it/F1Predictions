@@ -103,6 +103,24 @@ predict-next YEAR ROUND:
     uv run python -m src.models.predict_next run --year {{YEAR}} --round {{ROUND}} --target podium
     uv run python -m src.models.predict_next run --year {{YEAR}} --round {{ROUND}} --target teammate
 
+# --- Phase 4.2 Pre-quali (predict BEFORE qualifying) ---
+
+# Phase 4.2.4b pre-quali feature build. Rebuilds the FastF1 sessions + weather L2
+# (so freshly ingested FP2 + forecast land), then synthesizes a driver row WITHOUT
+# qualifying for the target race. Writes data/features/next_race_prequali.parquet.
+# Run AFTER `just ingest-next YEAR ROUND` (typically Friday night, post-FP2).
+build-prequali-features YEAR ROUND:
+    uv run python -m src.process.fastf1 build
+    uv run python -m src.process.openmeteo build
+    uv run python -m src.features.next_race_prequali build --year {{YEAR}} --round {{ROUND}}
+
+# Phase 4.2.4c pre-quali inference: trains the pre-quali stack on the full history
+# and predicts all four quali targets (pole, top3, top10, teammate) in both timing
+# modes (pre_weekend / post_fp2). Writes predictions/next_race_prequali_{target}.parquet.
+# Run AFTER build-prequali-features.
+predict-pre-quali YEAR ROUND:
+    uv run python -m src.models.predict_prequali run --year {{YEAR}} --round {{ROUND}} --target all
+
 # Full backfill across all sources. Lightweight sources first (Open-Meteo, Jolpica)
 # so they finish even if FastF1 rate-limits us (500 calls/h - see prune-rate-limit).
 ingest-all:

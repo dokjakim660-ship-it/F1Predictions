@@ -169,9 +169,7 @@ def build_prequali_features(year: int, round_no: int) -> pd.DataFrame:
     return rows.sort_values("driver_id").reset_index(drop=True)
 
 
-def save_next_race_prequali(
-    df: pd.DataFrame, path: Path = NEXT_RACE_PREQUALI_PARQUET
-) -> Path:
+def save_next_race_prequali(df: pd.DataFrame, path: Path = NEXT_RACE_PREQUALI_PARQUET) -> Path:
     path.parent.mkdir(parents=True, exist_ok=True)
     df.to_parquet(path, index=False)
     return path
