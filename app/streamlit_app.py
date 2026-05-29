@@ -98,6 +98,11 @@ stakes_page = st.Page(
     title="Stakes",
     icon=":material/payments:",
 )
+stakes_quali_page = st.Page(
+    "app_pages/stakes_quali.py",
+    title="Pre-Quali Stakes",
+    icon=":material/casino:",
+)
 roi_page = st.Page(
     "app_pages/roi.py",
     title="ROI Tracker",
@@ -129,6 +134,7 @@ page = st.navigation(
         next_race_page,
         pre_quali_page,
         stakes_page,
+        stakes_quali_page,
         roi_page,
         methodology_page,
         backtest_page,

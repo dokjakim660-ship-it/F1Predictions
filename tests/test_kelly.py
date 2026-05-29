@@ -63,3 +63,17 @@ def test_kelly_nan_safe():
     assert _kelly_raw_local(float("nan"), 0.5) == 0.0
     assert _kelly_raw_local(3.0, float("nan")) == 0.0
     assert _kelly_raw_local(np.nan, np.nan) == 0.0
+
+
+def test_shared_kelly_matches_local():
+    """The shared src.utils.kelly.kelly_raw (used by roi.py) must agree with the
+    page-local mirror across the same cases."""
+    import numpy as np
+
+    from src.utils.kelly import kelly_raw
+
+    cases = [(3.0, 0.5), (3.0, 0.3), (3.0, 1.0 / 3.0), (1.0, 0.5), (2.0, 0.9)]
+    for odds, p in cases:
+        assert math.isclose(kelly_raw(odds, p), _kelly_raw_local(odds, p), abs_tol=1e-12)
+    assert kelly_raw(float("nan"), 0.5) == 0.0
+    assert kelly_raw(3.0, np.nan) == 0.0
