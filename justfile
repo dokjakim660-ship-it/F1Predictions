@@ -121,6 +121,13 @@ build-prequali-features YEAR ROUND:
 predict-pre-quali YEAR ROUND:
     uv run python -m src.models.predict_prequali run --year {{YEAR}} --round {{ROUND}} --target all
 
+# Phase 4.2.8 composition A/B: holdout backtest of a pre-race podium model that
+# replaces the real quali/grid features with out-of-fold predicted-quali probs,
+# vs the real-grid podium model (+ ConstantRate / Top3Quali anchors). Eval-only;
+# measures how much podium signal survives without real qualifying.
+compose-prequali:
+    uv run python -m src.models.compose_prequali eval
+
 # Full backfill across all sources. Lightweight sources first (Open-Meteo, Jolpica)
 # so they finish even if FastF1 rate-limits us (500 calls/h - see prune-rate-limit).
 ingest-all:
