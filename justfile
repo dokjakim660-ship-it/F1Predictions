@@ -191,6 +191,13 @@ post-race YEAR ROUND:
     uv run python -m src.ingest.jolpica_ingest results --year {{YEAR}} --round {{ROUND}}
     uv run python -m src.eval.roi run --year {{YEAR}} --round {{ROUND}}
 
+# Phase 4.2.7 quali-market ROI: evaluate the four pre-quali bets (pole/top3/top10/
+# teammate-Q) against odds saved on the Pre-Quali Stakes page. Rebuilds the L2 +
+# feature table first so the realised quali targets (from mvp.parquet) are current,
+# then settles the bets. Run after the weekend (qualifying must be ingested+built).
+post-quali YEAR ROUND: build-l2 build
+    uv run python -m src.eval.roi run-quali --year {{YEAR}} --round {{ROUND}}
+
 # Print ROI log summary
 roi-show:
     uv run python -m src.eval.roi show
