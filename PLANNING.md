@@ -209,8 +209,8 @@ Train [2018→2024-12]  Test [2025-01→2025-12]
 | 0 — Setup | 1 | Repo, uv, just, FastF1-Test | ✅ DONE Mai 2026 |
 | 1 — MVP | 5–6 | Ingest, Features, Baselines, XGB+LGBM, MLflow, Calibration | ✅ DONE 2026-05-23 |
 | 2 — HF Spaces App | 3–4 | Streamlit Multi-Page (Methodology, Backtest, Importance), HF Deployment | ✅ DONE 2026-05-23 |
-| **3 — Next-Race-Predict-Pipeline** ⏳ NEXT | 3–4 | Ingest "next-only", Feature-Row für zukünftiges Rennen, `just predict-next`, Streamlit "Next Race"-Page, Sprint-WE-Verifikation. Details §13. | Ende Juni 2026 |
-| 4 — Pre-Quali-Modell + Quoten/ROI | 6–8 | Pre-Quali-Modell A/B vs. Pre-Race; The Odds API + manuell, ROI-Backtest, Kelly | Q3/Q4 2026 |
+| **3 — Next-Race-Predict-Pipeline** | 3–4 | Ingest "next-only", Feature-Row für zukünftiges Rennen, `just predict-next`, Streamlit "Next Race"-Page, Sprint-WE-Verifikation. Details §13. | ✅ DONE 2026-05-24 |
+| **4 — Quoten/ROI + Pre-Quali-Modell** ⏳ LAUFEND | 6–8 | 4.1 ROI-Loop (manuelle Quoten, Kelly, Post-Race-Eval) ✅; 4.2 Pre-Quali-Modell-Linie (4 Quali-Märkte) ✅ inkl. Composition-A/B (Negativ). Details §14. | Q3 2026 |
 | 5+ | open-ended | Ranking-Modell, DNF-Sub-Modell, Pole, Top-6/10, Live | ab Q4 2026 |
 
 **Plan-Abweichung Phase 3** (2026-05-23): Ursprünglich war Phase 3 das Pre-Quali-Modell. Beim Push-Review vor Phase 3 fiel auf, dass die Pipeline zwar sprint-robust ist (Ingest/Process/Features tolerieren fehlendes FP2), aber kein End-to-End-Predict-Pfad für ein zukünftiges Rennen existiert — die App zeigt nur historische Holdout-Predictions. Das war der eigentliche Nutzwert des Projekts ("Sa-Abend nach Quali Tipico-Quoten vergleichen"). Pre-Quali-Modell ist obendrein nur sinnvoll, wenn die Predict-Strecke einmal sauber steht, also gehört es architektonisch hinter Phase 3.
@@ -287,6 +287,48 @@ Train [2018→2024-12]  Test [2025-01→2025-12]
 2. Sprint-WE-Verifikationslauf (3.5) zeigt: keine FP2 → keine Pipeline-Errors → Predictions weichen vom Normal-WE in vorhersehbarer Richtung ab (FP2-Features NaN, alle anderen identisch).
 3. "Next Race"-Page auf HF Spaces live, Default-Tab.
 4. `tests/test_no_leakage_next.py` grün — keine Ziel-Race-Daten in den Features.
+
+---
+
+## 14. Phase 4 — Quoten/ROI + Pre-Quali-Modell (Sub-Plan)
+
+**Ziel:** Den eigentlichen Projekt-Treiber bedienen — "schlagen wir Tipico?" — über einen geschlossenen Wett-Loop (Quoten eintragen → Kelly-Sizing → Post-Race-P&L) und eine Pre-Quali-Vorhersage, damit man schon vor dem Qualifying tippen kann.
+
+**Plan-Abweichung:** Die Reihenfolge gegenüber der Roadmap-Tabelle wurde getauscht — der ROI-Loop (4.1) kam vor dem Pre-Quali-Modell (4.2), weil der Wett-Loop unabhängig vom Pre-Quali-Modell nutzbar ist (er sizet die bestehenden Pre-Race-Märkte Podium/Teammate) und damit sofort Mehrwert liefert.
+
+### 4.1 ROI-Loop ✅ DONE 2026-05-25
+
+Manueller Quoten-Workflow statt API: The Odds API führt kein F1, Tipico-Scraping bräuchte Playwright gegen Akamai. Bei ~20 Rennen/Jahr × ~2 Min Eingabe ist manuell vertretbar.
+
+| Baustein | Inhalt |
+|---|---|
+| Quoten-Persistenz | Stakes-Page "Save odds" schreibt `data/odds/{race_id}_{target}.json` und archiviert die Prediction nach `predictions/archive/`. |
+| Post-Race-Eval | `just post-race YEAR ROUND` zieht Ergebnisse, settled die Wetten, schreibt `data/roi/log.parquet`. |
+| ROI-Tracker-Page | Laufende P&L-Anzeige aus dem Log. |
+
+**Workflow:** Sa-Abend `just predict-next` → Stakes-Page Quoten eintragen + Save → So-Abend `just post-race`. Erstes Live-Rennen: Monaco 2026-06-07.
+
+### 4.2 Pre-Quali-Modell-Linie ✅ DONE 2026-05-30
+
+Vorhersage der vier **Qualifying-Märkte** (`pole`, `top3_quali`, `top10_quali`, `teammate_quali`) VOR dem Qualifying, in zwei Timing-Modi (`pre_weekend` / `post_fp2`). Default-Modell LogReg (robustester bei diesem N).
+
+| Sub | Inhalt | Commit |
+|---|---|---|
+| 4.2.2/4.2.3 | Pre-Quali-Modell-Driver + Holdout-Eval | bd6c4ac |
+| 4.2.4a–c | Dev-basierte Modellwahl, Next-Race-Feature-Builder, Inferenz + just-Targets | e4f5a21..a09dd00 |
+| 4.2.5 | Streamlit Pre-Quali-Page (Modus-Vergleich, FP2-Delta) | 0643c63 |
+| 4.2.6 | Pre-Quali-Stakes-Page + Shared-Kelly-Helper `src/utils/kelly.py` | fb95f8d |
+| 4.2.7 | Quali-Markt-ROI: `just post-quali` / `roi run-quali` (settled gegen Feature-Table-Targets) | 1f44e33 |
+| 4.2.8 | Composition-A/B: Podium-Modell mit predicted statt echter Quali (`just compose-prequali`) | d8740a5 |
+
+**Erfolgskriterium / 4.2.8-Resultat (NEGATIV):** A/B-Holdout (827 Rows, 41 Races). Ein Pre-Race-Podium-Modell mit VORHERGESAGTER Quali (post_fp2-Features + 4 leakage-safe OOF-Pre-Quali-Probs) verliert signifikant gegen das Modell mit ECHTER Quali: Ensemble-Brier_raw 0.0872 (composed) vs. 0.0638 (real_grid), diff +0.0233, 95 % CI [+0.0131, +0.0330]. Es schlägt nicht einmal die triviale Top3Quali-Grid-Regel (0.0752; diff +0.0120, CI [−0.0024, +0.0267]). Bestätigt das Phase-1-Ergebnis empirisch: Grid-Position trägt das Podium-Signal — sobald die Quali vorhergesagt statt bekannt ist, bricht es weg.
+
+**Konsequenz:** Pre-Quali taugt NICHT als Eingang für ein Podium-Modell. Der Nutzwert der Pre-Quali-Linie liegt in den **eigenständigen Quali-Märkten** (pole/top3/top10/teammate-Q) plus deren ROI-Loop (`post-quali`), nicht im Komponieren eines Podium-Modells aus vorhergesagter Quali.
+
+### Offen / als Nächstes
+
+- Live-Betrieb des Wett-Loops ab Monaco 2026-06-07 (Pre-Race + Pre-Quali-Märkte), erste echte ROI-Datenpunkte sammeln.
+- Phase 5+ bleibt offen (Ranking-Modell, DNF-Sub-Modell, Live-Updates).
 
 ---
 
