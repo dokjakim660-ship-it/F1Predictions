@@ -25,10 +25,20 @@ into this Space. No FastF1 / xgboost / shap dependencies at runtime.
   for the upcoming race, refreshed locally each Saturday after qualifying.
   Top-3 podium rows highlighted; team-pair view shows the favored driver
   per constructor. Flags sprint weekends (FP2 missing).
-- **Stakes** — Kelly-staking calculator. Enter a bankroll plus the decimal
-  odds your bookmaker offers per driver and the page returns the
-  Kelly-optimal stake per value bet (default Quarter-Kelly, slider for the
-  fraction). Works for both Podium and Teammate-H2H markets.
+- **Pre-Quali** — Thursday/Friday forecast for the four qualifying markets
+  (pole, top-3, top-10/Q3, beat-teammate) *before* qualifying runs. Each
+  driver carries probabilities for two timing modes (pre-weekend and
+  post-FP2); the page can show a single mode or the FP2 effect as a delta.
+- **Stakes** — Kelly-staking calculator for the race markets. Enter a
+  bankroll plus the decimal odds your bookmaker offers per driver and the
+  page returns the Kelly-optimal stake per value bet (default Quarter-Kelly,
+  slider for the fraction). Works for both Podium and Teammate-H2H markets.
+- **Pre-Quali Stakes** — the same Kelly sizing on the four qualifying
+  markets, placed before qualifying. Bets at the richest deployable mode
+  (post-FP2, or pre-weekend on sprint weekends) against the calibrated
+  pre-quali probability.
+- **ROI Tracker** — running P&L of the Kelly-sized bets placed since odds
+  were first saved, settled after each weekend from realised results.
 - **Methodology** — what the two targets are, how features are built and
   evaluated, what comes next.
 - **Backtest History** — per-model calibrated Brier with 95 % bootstrap CIs,
@@ -37,6 +47,8 @@ into this Space. No FastF1 / xgboost / shap dependencies at runtime.
 - **Feature Importance** — top features per target (mean(|SHAP|) for the
   XGBoost podium model, |standardised coefficient| for the LogReg teammate
   model), bar-charted with direction colouring.
+- **Feature Distribution** — how each feature is spread across the dataset
+  (auto-typed bar/histogram), plus the conditional podium rate per value.
 
 ## Source
 
