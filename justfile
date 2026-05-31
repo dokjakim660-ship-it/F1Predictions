@@ -128,6 +128,25 @@ predict-pre-quali YEAR ROUND:
 compose-prequali:
     uv run python -m src.models.compose_prequali eval
 
+# --- Phase 5 ranking (predict the full grid order: quali + race) ---
+
+# Holdout A/B per task: position-regression vs LambdaMART ranker vs the trivial
+# baseline (grid order for race, recent quali form for quali). Scored on rank
+# metrics (position MAE, Spearman, top-k), not Brier. Eval-only, no betting.
+eval-rank TASK="both":
+    uv run python -m src.models.rank eval --task {{TASK}}
+
+# Dev-set model selection (walk-forward position MAE; holdout never touched).
+select-rank TASK="both":
+    uv run python -m src.models.rank select --task {{TASK}}
+
+# Next-race ranking inference: predicted qualifying order + predicted race order
+# for one upcoming race. Needs next_race_prequali.parquet (build-prequali-features)
+# for quali and next_race.parquet (build-next-features) for race. Writes
+# predictions/next_race_rank_{quali,race}.parquet.
+predict-rank YEAR ROUND:
+    uv run python -m src.models.predict_rank run --year {{YEAR}} --round {{ROUND}} --task all
+
 # Full backfill across all sources. Lightweight sources first (Open-Meteo, Jolpica)
 # so they finish even if FastF1 rate-limits us (500 calls/h - see prune-rate-limit).
 ingest-all:
