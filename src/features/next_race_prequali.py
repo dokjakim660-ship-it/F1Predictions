@@ -30,6 +30,7 @@ from src.features.build import (
     FEATURE_COLUMNS,
     FEATURE_COLUMNS_POST_FP2,
     QUALI_TARGETS,
+    RANK_TARGETS,
     TARGET_PODIUM,
     TARGET_TEAMMATE,
     compute_features,
@@ -160,7 +161,7 @@ def build_prequali_features(year: int, round_no: int) -> pd.DataFrame:
     # race-outcome meta. FP2 + historical/track/weather features survive.
     for col in _QUALI_FEATURE_COLS:
         rows[col] = np.nan
-    for col in (*QUALI_TARGETS, TARGET_PODIUM, TARGET_TEAMMATE):
+    for col in (*QUALI_TARGETS, *RANK_TARGETS, TARGET_PODIUM, TARGET_TEAMMATE):
         rows[col] = np.nan
     rows["finish_position"] = np.nan
     rows["dnf"] = np.nan

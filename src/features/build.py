@@ -208,6 +208,19 @@ QUALI_TARGETS = [
     TARGET_QUALI_BEAT_TEAMMATE,
 ]
 
+# Phase 5 ranking targets: the exact within-race finishing/qualifying order,
+# 1..N gap-free. Unlike every other target these are NOT binary -- they feed the
+# learning-to-rank / position-regression models in src/models/rank.py, scored on
+# rank metrics (position MAE, Spearman) instead of Brier. Both are derived from
+# the same race/quali ordering the binary targets already use:
+#   target_quali_rank -- the gap-free q_rank built in _add_quali_targets.
+#   target_race_rank  -- the DNF-aware _race_score order built in _add_targets
+#                        (finishers by position, DNFs behind them by laps).
+TARGET_QUALI_RANK = "target_quali_rank"
+TARGET_RACE_RANK = "target_race_rank"
+
+RANK_TARGETS = [TARGET_QUALI_RANK, TARGET_RACE_RANK]
+
 _META_COLS = [
     "race_id",
     "year",
@@ -261,6 +274,12 @@ def _add_targets(df: pd.DataFrame) -> pd.DataFrame:
     # cars retired on the same lap) has no winner.
     beat[(n_cars != 2) | has_tie.astype(bool)] = np.nan
     df[TARGET_TEAMMATE] = beat
+
+    # Exact race finishing rank 1..N, gap-free, from the same _race_score order:
+    # finishers rank by position, DNFs fall behind by laps completed. method="first"
+    # breaks the (impossible-for-finishers, possible-for-same-lap-DNFs) ties
+    # deterministically so every race resolves to exactly N distinct ranks.
+    df[TARGET_RACE_RANK] = df.groupby("race_id", sort=False)["_race_score"].rank(method="first")
     return df.drop(columns=["_race_score"])
 
 
@@ -328,6 +347,9 @@ def _add_quali_targets(df: pd.DataFrame) -> pd.DataFrame:
     df[TARGET_TOP3_QUALI] = q_rank.le(3).astype(float).where(defined)
     df[TARGET_TOP10_QUALI] = q_rank.le(10).astype(float).where(defined)
     df[TARGET_QUALI_BEAT_TEAMMATE] = df["quali_beat_teammate"]
+    # The full qualifying order (Phase 5 ranking target): the same gap-free 1..N
+    # rank, kept as a column instead of thresholded. NaN where q_position is NaN.
+    df[TARGET_QUALI_RANK] = q_rank.where(defined)
     return df
 
 
@@ -528,6 +550,7 @@ def compute_features(
         _META_COLS
         + [TARGET_PODIUM, TARGET_TEAMMATE]
         + QUALI_TARGETS
+        + RANK_TARGETS
         + FEATURE_COLUMNS
         + CATEGORICAL_COLUMNS
     )
@@ -567,6 +590,10 @@ def _print_summary(df: pd.DataFrame) -> None:
         defined = df[t].notna().mean()
         rate = df[t].mean()
         print(f"[features.build] {t}: rate {rate:.3f} (defined {defined:.1%} of rows)")
+    for t in RANK_TARGETS:
+        defined = df[t].notna().mean()
+        max_rank = df[t].max()
+        print(f"[features.build] {t}: max rank {max_rank:.0f} (defined {defined:.1%} of rows)")
     print(f"[features.build] FastF1 quali join matched: {matched:.1%} of rows")
     print(f"[features.build] has_fp2: {df['has_fp2'].mean():.1%} of rows")
     high_nan = {

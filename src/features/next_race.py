@@ -29,6 +29,7 @@ import numpy as np
 import pandas as pd
 
 from src.features.build import (
+    RANK_TARGETS,
     TARGET_PODIUM,
     TARGET_TEAMMATE,
     compute_features,
@@ -175,6 +176,8 @@ def build_next_race_features(year: int, round_no: int) -> pd.DataFrame:
     # values for those rows. Hardwire NaN so inference code can rely on isna().
     next_rows[TARGET_PODIUM] = np.nan
     next_rows[TARGET_TEAMMATE] = np.nan
+    for col in RANK_TARGETS:
+        next_rows[col] = np.nan
     next_rows["finish_position"] = np.nan
     next_rows["dnf"] = np.nan
 
