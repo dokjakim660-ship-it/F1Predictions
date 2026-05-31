@@ -29,6 +29,11 @@ into this Space. No FastF1 / xgboost / shap dependencies at runtime.
   (pole, top-3, top-10/Q3, beat-teammate) *before* qualifying runs. Each
   driver carries probabilities for two timing modes (pre-weekend and
   post-FP2); the page can show a single mode or the FP2 effect as a delta.
+- **Grid & Finish Order** — predicted full qualifying + race order
+  (Phase 5.1 ranking models), in the same timing modes.
+- **DNF Risk** — calibrated P(driver does not finish) per timing mode
+  (Phase 5.2). Honest framing: no model beats a team-reliability baseline, so
+  it's a reliability estimate, not a betting edge.
 - **Stakes** — Kelly-staking calculator for the race markets. Enter a
   bankroll plus the decimal odds your bookmaker offers per driver and the
   page returns the Kelly-optimal stake per value bet (default Quarter-Kelly,

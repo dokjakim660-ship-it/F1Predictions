@@ -28,3 +28,24 @@ Format: `YYYY-MM-DD  <model_name>  <git_sha>  Brier=X  ECE=X  Notes`
 | 2026-05-24 | XGBoost | 1cb39ed | 0.0631 | 0.0264 | Phase 1.4 — rich features (podium), walk-forward+Optuna (raw probs) |
 | 2026-05-24 | LightGBM | 1cb39ed | 0.0624 | 0.0240 | Phase 1.4 — rich features (podium), walk-forward+Optuna (raw probs) |
 | 2026-05-24 | Ensemble | 1cb39ed | 0.0625 | 0.0279 | Phase 1.4 — rich features (podium), walk-forward+Optuna (raw probs) |
+| 2026-06-01 | TeamReliability (DNF) | 44c940d | 0.1155 | 0.0057 | Phase 5.2 — DNF; nothing beats it (best LogReg 0.1149, CI straddles 0); ConstantRate 0.1158 level; default deployed |
+
+### Phase 5.2 DNF sub-model — 2026-06-01 (negative result)
+
+New binary market P(DNF), three timing modes (pre_weekend / post_fp2 / race).
+Target `target_dnf`; stack LogReg/XGB/LGBM/Ensemble (default params, no Optuna);
+walk-forward OOF → isotonic → holdout Brier. Baselines: ConstantRate +
+TeamReliability (1-feature logit on `team_form_dnf_rate_l10`).
+
+- Holdout (827 rows / 41 races, base rate 0.133): no model beats TeamReliability
+  (brier_raw 0.1155, brier_cal 0.1149, ECE 0.0057). Best per mode = LogReg
+  (~0.1149–0.1152 raw) but every CI straddles 0 (race diff −0.0003,
+  CI [−0.0047, +0.0040]); ConstantRate 0.1158 level. Dev-selection picks
+  TeamReliability in all three modes. DNF near-unpredictable beyond team
+  reliability.
+- C1 ablation: a leak-free `pred_dnf` feature does not help the podium ensemble
+  (base 0.0638 vs aug 0.0649, diff +0.0010, CI [−0.0009, +0.0029]).
+- C2 (DNF betting market) deliberately not built (user can't bet DNFs).
+- Deployed default = TeamReliability (best calibration; varies per team).
+- New: src/models/{dnf,predict_dnf,compose_dnf}.py, app/app_pages/dnf.py, just
+  eval-dnf/select-dnf/predict-dnf/compose-dnf. See PLANNING.md §16.

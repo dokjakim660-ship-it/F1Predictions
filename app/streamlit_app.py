@@ -98,6 +98,11 @@ rank_page = st.Page(
     title="Grid & Finish Order",
     icon=":material/format_list_numbered:",
 )
+dnf_page = st.Page(
+    "app_pages/dnf.py",
+    title="DNF Risk",
+    icon=":material/car_crash:",
+)
 stakes_page = st.Page(
     "app_pages/stakes.py",
     title="Stakes",
@@ -139,6 +144,7 @@ page = st.navigation(
         next_race_page,
         pre_quali_page,
         rank_page,
+        dnf_page,
         stakes_page,
         stakes_quali_page,
         roi_page,

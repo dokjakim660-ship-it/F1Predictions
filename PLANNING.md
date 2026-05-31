@@ -355,6 +355,26 @@ Vorhersage der vier **Qualifying-Märkte** (`pole`, `top3_quali`, `top10_quali`,
 
 ---
 
+## 16. Phase 5.2 — DNF-Sub-Modell (P(Fahrer fällt aus))
+
+**Stand: ✅ DONE 2026-06-01 (Negativ-Resultat).** Eigenständiger Binär-Markt P(DNF), drei Timing-Modi (`pre_weekend` / `post_fp2` / `race`). Aufbau spiegelt die Pre-Quali-Linie: neues Target `target_dnf` (= `dnf` als float, NaN-sicher für die next-race-Synth-Zeilen — in **beiden** next-race-Buildern genullt), Stack LogReg/XGB/LGBM/Ensemble mit Default-Params (kein Optuna — Phase-3.7-Lehre), walk-forward OOF → isotonic → Holdout-Brier. Zwei Baselines: ConstantRate (Brier-Floor) + **TeamReliability** (1-Feature-LogReg auf `team_form_dnf_rate_l10`, das DNF-Analog zu RecentQualiForm).
+
+| Stufe | Inhalt | Artefakt |
+|---|---|---|
+| A1 | Target + Guards | build.py `TARGET_DNF`, beide next-race-Builder nullen es, `tests/test_dnf_target.py` |
+| A2 | Modell + Eval + Verdikt | `src/models/dnf.py`, just `eval-dnf` / `select-dnf` |
+| B1 | Inferenz | `src/models/predict_dnf.py` → `predictions/next_race_dnf.parquet`, just `predict-dnf` |
+| B2 | Streamlit-Page | `app/app_pages/dnf.py` „DNF Risk" + Nav + HF-README |
+| C1 | Integrations-Ablation | `src/models/compose_dnf.py`, just `compose-dnf`, `tests/test_compose_dnf.py` |
+
+**Verdikt (Holdout, 827 Zeilen / 41 Rennen, Base-Rate 0.133):** Kein Modell schlägt die TeamReliability-Baseline (brier_raw 0.1155, brier_cal 0.1149, beste Kalibrierung ECE 0.0057). Bestes Modell je Modus = LogReg (brier_raw 0.1149–0.1152), aber **diff zu TeamReliability nicht signifikant** (CIs überspannen 0; race diff −0.0003, CI [−0.0047, +0.0040]). ConstantRate (0.1158) praktisch gleichauf. Dev-Selektion wählt TeamReliability in allen drei Modi. Mehr Wochenend-Signal (post_fp2/race) hilft nicht. → Ausfälle sind jenseits der Team-Zuverlässigkeitsrate **nicht vorhersagbar** (irreduzibles Chaos: Crashes, Zufallsdefekte). Gleiche Lehre wie 3.7 / 4.2.8 / 5.1-race.
+
+**C1-Ablation:** Ein explizites, leak-frei cross-gefittetes `pred_dnf`-Feature ins Podium-Modell bringt **keinen signifikanten Effekt** (Podium-Ensemble base 0.0638 vs aug 0.0649, diff +0.0010, CI [−0.0009, +0.0029]). `team_form_dnf_rate_l10` ist bereits Feature und das Podium-Target schließt DNFs ohnehin aus.
+
+**C2 (DNF als ROI-Wettmarkt) bewusst NICHT gebaut** (User-Entscheidung 2026-06-01: „kann eh nicht auf DNFs wetten"). Default deployt = **TeamReliability** (ehrlichste Wahl: beste Kalibrierung, variiert pro Team, anders als der flache ConstantRate). Die App-Page zeigt das Negativ-Verdikt prominent.
+
+---
+
 ## Memory-Referenzen (für Folge-Sessions)
 
 Die detaillierten Entscheidungen liegen in `C:\Users\morit\.claude\projects\C--Projekte-F1Predictions\memory\`:

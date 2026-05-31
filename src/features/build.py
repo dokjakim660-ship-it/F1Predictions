@@ -192,6 +192,12 @@ PRE_QUALI_FEATURE_SETS = {
 TARGET_PODIUM = "target_podium"
 TARGET_TEAMMATE = "target_beat_teammate"
 
+# Phase 5.2 DNF target: P(driver does not finish the race). A pre-race binary
+# market in its own right ("driver to retire"); also the finish/no-finish leg of
+# an expected-position decomposition. Stored as float so the next-race synth rows
+# (dnf NaN, race not run) propagate to a NaN target the way the other targets do.
+TARGET_DNF = "target_dnf"
+
 # Phase 4.2 pre-quali targets, all derived from final qualifying position. Kept
 # in dedicated target columns (separate from quali_beat_teammate the feature)
 # so pre-quali models can train on the target without the feature accidentally
@@ -251,6 +257,11 @@ def _add_targets(df: pd.DataFrame) -> pd.DataFrame:
     df[TARGET_PODIUM] = (
         df["finish_position"].between(1, 3, inclusive="both") & (~df["dnf"])
     ).astype(int)
+
+    # DNF target: 1 if the driver retired. astype(float) keeps the historical
+    # bool as 0.0/1.0 while leaving the next-race synth rows (dnf NaN) NaN, so
+    # prepare_dev_test drops them exactly like the teammate target.
+    df[TARGET_DNF] = df["dnf"].astype(float)
 
     # Teammate H2H: rank the two cars of one constructor by race classification.
     # Finishers (lower position better) always beat DNFs; among DNFs, more laps
@@ -548,7 +559,7 @@ def compute_features(
 
     out_cols = (
         _META_COLS
-        + [TARGET_PODIUM, TARGET_TEAMMATE]
+        + [TARGET_PODIUM, TARGET_TEAMMATE, TARGET_DNF]
         + QUALI_TARGETS
         + RANK_TARGETS
         + FEATURE_COLUMNS
@@ -582,6 +593,10 @@ def _print_summary(df: pd.DataFrame) -> None:
     print(f"[features.build] {len(df)} rows, {df.shape[1]} cols, {n_races} races")
     print(f"[features.build] {len(FEATURE_COLUMNS)} numeric features + {CATEGORICAL_COLUMNS}")
     print(f"[features.build] podium rate: {df[TARGET_PODIUM].mean():.3f}")
+    print(
+        f"[features.build] dnf rate: {df[TARGET_DNF].mean():.3f} "
+        f"(defined {df[TARGET_DNF].notna().mean():.1%} of rows)"
+    )
     print(
         f"[features.build] teammate target defined: "
         f"{df[TARGET_TEAMMATE].notna().mean():.1%} of rows"

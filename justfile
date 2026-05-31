@@ -147,6 +147,30 @@ select-rank TASK="both":
 predict-rank YEAR ROUND:
     uv run python -m src.models.predict_rank run --year {{YEAR}} --round {{ROUND}} --task all
 
+# --- Phase 5.2 DNF sub-model (P(driver does not finish)) ---
+
+# Holdout eval per timing mode (pre_weekend / post_fp2 / race): LogReg/XGB/LGBM/
+# Ensemble vs ConstantRate + TeamReliability baselines. Walk-forward OOF ->
+# isotonic calibration -> Brier on the sealed holdout, with the Go/No-Go verdict.
+eval-dnf MODE="all":
+    uv run python -m src.models.dnf eval --mode {{MODE}}
+
+# Dev-set model selection (walk-forward Brier; holdout never touched).
+select-dnf MODE="all":
+    uv run python -m src.models.dnf select --mode {{MODE}}
+
+# Next-race DNF inference: trains the DNF stack on the full history, calibrates on
+# dev OOF, predicts P(DNF) for one upcoming race in every timing mode. race mode
+# reads next_race.parquet; pre_weekend/post_fp2 read next_race_prequali.parquet.
+# Writes predictions/next_race_dnf.parquet.
+predict-dnf YEAR ROUND:
+    uv run python -m src.models.predict_dnf run --year {{YEAR}} --round {{ROUND}}
+
+# Phase 5.2 C1 ablation: does adding a leak-free P(DNF) feature improve the podium
+# model on the holdout? Paired-bootstrap CI vs the plain podium model. Eval-only.
+compose-dnf:
+    uv run python -m src.models.compose_dnf eval
+
 # Full backfill across all sources. Lightweight sources first (Open-Meteo, Jolpica)
 # so they finish even if FastF1 rate-limits us (500 calls/h - see prune-rate-limit).
 ingest-all:
