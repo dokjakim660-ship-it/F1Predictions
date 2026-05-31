@@ -328,7 +328,30 @@ Vorhersage der vier **Qualifying-Märkte** (`pole`, `top3_quali`, `top10_quali`,
 ### Offen / als Nächstes
 
 - Live-Betrieb des Wett-Loops ab Monaco 2026-06-07 (Pre-Race + Pre-Quali-Märkte), erste echte ROI-Datenpunkte sammeln.
-- Phase 5+ bleibt offen (Ranking-Modell, DNF-Sub-Modell, Live-Updates).
+- DNF-Sub-Modell + Live-Updates bleiben offen (Phase 5+).
+
+---
+
+## 15. Phase 5 — Ranking-Modell (volle Grid-Reihenfolge, Quali + Race)
+
+**Ziel:** Jedem Fahrer eine *exakte Platzierung* vorhersagen statt nur binärer Outcomes — einmal fürs Qualifying, einmal fürs Rennen. Bewusst eine andere ML-Aufgabe (Position 1..N statt 0/1, Rank-Metriken statt Brier, keine Kalibrierung); das ist der Lernwert.
+
+**Zwei symmetrische Tasks** (passend zu den bestehenden Timing-Kontexten):
+
+| Task | Ziel (`build.py`) | Features | Inferenz-Input | Baseline |
+|---|---|---|---|---|
+| quali | `target_quali_rank` (1..N) | Pre-Quali-Sets (pre_weekend / post_fp2) | `next_race_prequali.parquet` | RecentQualiForm (recent avg quali pos) |
+| race | `target_race_rank` (1..N, DNF-aware) | volle `FEATURE_COLUMNS` | `next_race.parquet` | GridOrder (Startaufstellung) |
+
+**Zwei ML-Methoden A/B-verglichen** (User-Entscheidung): (A) **Position-Regression** (Ridge/XGB/LGBM-Regressor + Ensemble → pro Rennen sortieren) vs. (B) **Learning-to-Rank / LambdaMART** (XGBRanker `rank:ndcg` / LGBMRanker `lambdarank`, `group=race`). Bewertet mit Positions-MAE, Spearman, Top-k; A/B-Verdikt per paired race-bootstrap CI auf der MAE-Differenz.
+
+**Holdout-Resultate (827/823 Rows, 41 Races):**
+- **race:** GridOrder-Baseline sehr stark (pos_mae **3.30**); bestes Modell Ridge 3.24 — **nicht signifikant** (CI [-0.22, +0.10]). Bestätigt den Phase-1-Befund empirisch erneut: die Startaufstellung trägt das Renn-Signal, Modelle holen kaum etwas obendrauf.
+- **quali pre_weekend:** Ridge **3.42** schlägt RecentQualiForm 3.57 bei 95 %.
+- **quali post_fp2:** LGBMReg **3.28** schlägt Baseline bei 95 %; FP2 hilft (3.42 → 3.28).
+- **A/B-Verdikt:** **Position-Regression schlägt LambdaMART** auf Positions-MAE in jedem signifikanten Fall. Die Ranker gewinnen die Top-k-Set-Metriken (top1/top3 — sie optimieren die Reihenfolge direkt), platzieren das Mittelfeld aber ungenauer. Deployter Default: **Ridge** (dev-selektiert für race + pre_weekend, am interpretierbarsten).
+
+**Neue Dateien:** `src/eval/rank_metrics.py`, `src/models/rank.py` (eval + select), `src/models/predict_rank.py` (Inferenz → `predictions/next_race_rank_{quali,race}.parquet`), `app/app_pages/rank.py` (Page „Grid & Finish Order"), `tests/test_rank_metrics.py` + `tests/test_rank_targets.py`. just-Targets: `eval-rank`, `select-rank`, `predict-rank YEAR ROUND`.
 
 ---
 

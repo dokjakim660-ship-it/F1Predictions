@@ -93,6 +93,11 @@ pre_quali_page = st.Page(
     title="Pre-Quali",
     icon=":material/timer:",
 )
+rank_page = st.Page(
+    "app_pages/rank.py",
+    title="Grid & Finish Order",
+    icon=":material/format_list_numbered:",
+)
 stakes_page = st.Page(
     "app_pages/stakes.py",
     title="Stakes",
@@ -133,6 +138,7 @@ page = st.navigation(
     [
         next_race_page,
         pre_quali_page,
+        rank_page,
         stakes_page,
         stakes_quali_page,
         roi_page,
