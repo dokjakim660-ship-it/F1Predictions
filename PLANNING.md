@@ -619,6 +619,36 @@ Pflicht-De-Bias.
 
 ---
 
+## 26. Phase 5.12 — Driver-ELO (Backlog #7, ⚠️ DROPPED, redundant mit Form)
+
+**Stand: ✅ EVALUIERT, VERWORFEN 2026-06-02 (Negativ-Resultat).** Backlog-Idee #7: pairwise Multiplayer-ELO,
+rennweise chronologisch über die ganze Historie aktualisiert, soll Fahrer-Skill opponent-strength-gewichtet
+isolieren. Feature `driver_elo_pre_race` = Rating ENTERING das Rennen (vor dem Update erfasst → leakage-
+sicher), Debütanten bei 1500. Pairwise-Update (i vs j: 1/0.5/0 nach Zielreihenfolge, K=24/n_opp). No-
+Leakage-Guard (unabhängiger chronologischer Replay + Pre-Update-Property + Debüt=1500) + Round-Trip grün
+(globales sequenzielles Feature ist round-trip-sicher). Range 1343–1885, Verstappen oben — face-valide.
+
+**Verdikt (Holdout, 41 Rennen) — eindeutig negativ + maximal redundant:** **corr(elo, driver_form_finish_l10)
+= −0.846** (höchste aller getesteten Features). Race-Rank deployt Ridge 3.190→**3.226** (+0.036 schlechter);
+Quali post_fp2 verliert den #8-Gewinn (LGBMReg 3.217→3.295, +0.073); pre_weekend leicht besser. Brier:
+Podium −0.0002 (neutral), Teammate −0.0009 (Rausch). Ein Finishing-ELO ist im Kern eine geglättete
+Finishing-Form — es trägt KEINE neue Dimension, nur Redundanz, und die Opponent-Strength-Gewichtung reicht
+nicht. **Das Backlog-Versprechen „ELO isoliert Fahrer vom Auto" ist falsch:** ein Finishing-ELO ist
+auto-dominiert (schnelles Auto → schlägt alle → hohes ELO).
+
+**Entscheidung (Claude-Empfehlung, vom User delegiert): DROP.** Höchste Redundanz aller Kandidaten,
+verschlechtert die deployten race+post_fp2-Modelle. Code (inkl. ELO-Maschinerie) byte-identisch zurückgebaut.
+
+**Checklisten-Verfeinerung (#8 vs. #7, zentral):** Hohe Korrelation (|corr|>0.7) ist OK, WENN das Feature
+eine NEUE Dimension trägt — #8 Track-Cluster (corr 0.798, aber Track-Typ-Info → benigne hilfreich, KEPT).
+Ein hoch-korreliertes Feature in DERSELBEN Dimension wie bestehende (#7 ELO ≈ Form, #16 Beat-Rate ≈ Form)
+ist reine Redundanz → schädlich, DROP. Vor dem Bau fragen: korreliert hoch UND misst dasselbe? → nicht bauen.
+
+**Nächster Backlog-Einstieg:** #13 Restart MIT Pflicht-De-Bias oder #5 Top-Speed-Profil (mit
+Fingerprint-Check) — beide tragen potenziell eine neue Dimension (Strategie-/Auto-Charakter).
+
+---
+
 ## Memory-Referenzen (für Folge-Sessions)
 
 Die detaillierten Entscheidungen liegen in `C:\Users\morit\.claude\projects\C--Projekte-F1Predictions\memory\`:
