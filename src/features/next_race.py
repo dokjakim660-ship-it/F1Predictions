@@ -38,6 +38,7 @@ from src.features.build import (
 from src.process.fastf1 import load_sessions
 from src.process.jolpica import load_results
 from src.process.openmeteo import load_weather
+from src.process.overtakes import load_overtakes
 from src.utils.paths import FEATURES_DIR
 from src.utils.race_inventory import load_inventory
 from src.utils.tracks import load_tracks
@@ -161,6 +162,7 @@ def build_next_race_features(year: int, round_no: int) -> pd.DataFrame:
     inv = load_inventory()
     tracks = load_tracks()
     weather = load_weather()
+    overtakes = load_overtakes()
 
     race_id = f"{year}_{round_no:02d}"
     results = results[results["race_id"] != race_id].copy()
@@ -168,7 +170,7 @@ def build_next_race_features(year: int, round_no: int) -> pd.DataFrame:
     pseudo = synthesize_pseudo_results(year, round_no, sessions=sessions, inv=inv, results=results)
     combined = pd.concat([results, pseudo], ignore_index=True)
 
-    df = compute_features(combined, sessions, inv, tracks, weather)
+    df = compute_features(combined, sessions, inv, tracks, weather, overtakes)
     next_rows = df[df["race_id"] == race_id].copy()
 
     # Force targets + race-outcome meta to NaN. compute_features computes them

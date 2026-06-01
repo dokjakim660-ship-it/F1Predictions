@@ -93,6 +93,7 @@ ingest-next YEAR ROUND:
 build-next-features YEAR ROUND:
     uv run python -m src.process.fastf1 build
     uv run python -m src.process.openmeteo build
+    uv run python -m src.process.overtakes build
     uv run python -m src.features.next_race build --year {{YEAR}} --round {{ROUND}}
 
 # Phase 3.3 next-race inference: re-trains XGB+LGBM+LogReg on the full historical
@@ -112,6 +113,7 @@ predict-next YEAR ROUND:
 build-prequali-features YEAR ROUND:
     uv run python -m src.process.fastf1 build
     uv run python -m src.process.openmeteo build
+    uv run python -m src.process.overtakes build
     uv run python -m src.features.next_race_prequali build --year {{YEAR}} --round {{ROUND}}
 
 # Phase 4.2.4c pre-quali inference: trains the pre-quali stack on the full history
@@ -180,17 +182,19 @@ ingest-all:
 
 # --- Phase 1.1 Process (RAW -> L2 processed parquet) ---
 
-# Build all three L2 processed parquets (results, weather, sessions)
+# Build all L2 processed parquets (results, weather, sessions, overtakes)
 build-l2:
     uv run python -m src.process.jolpica build
     uv run python -m src.process.openmeteo build
     uv run python -m src.process.fastf1 build
+    uv run python -m src.process.overtakes build
 
-# Print summaries of all three L2 parquets
+# Print summaries of all L2 parquets
 show-l2:
     uv run python -m src.process.jolpica show
     uv run python -m src.process.openmeteo show
     uv run python -m src.process.fastf1 show
+    uv run python -m src.process.overtakes show
 
 # --- Phase 1.3 Baseline model (Brier latte vor MVP) ---
 

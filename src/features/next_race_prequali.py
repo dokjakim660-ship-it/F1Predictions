@@ -44,6 +44,7 @@ from src.features.next_race import (
 from src.process.fastf1 import load_sessions
 from src.process.jolpica import load_results
 from src.process.openmeteo import load_weather
+from src.process.overtakes import load_overtakes
 from src.utils.paths import FEATURES_DIR
 from src.utils.race_inventory import load_inventory
 from src.utils.tracks import load_tracks
@@ -146,6 +147,7 @@ def build_prequali_features(year: int, round_no: int) -> pd.DataFrame:
     inv = load_inventory()
     tracks = load_tracks()
     weather = load_weather()
+    overtakes = load_overtakes()
 
     race_id = f"{year}_{round_no:02d}"
     results = results[results["race_id"] != race_id].copy()
@@ -155,7 +157,7 @@ def build_prequali_features(year: int, round_no: int) -> pd.DataFrame:
     )
     combined = pd.concat([results, pseudo], ignore_index=True)
 
-    df = compute_features(combined, sessions, inv, tracks, weather)
+    df = compute_features(combined, sessions, inv, tracks, weather, overtakes)
     rows = df[df["race_id"] == race_id].copy()
 
     # Pre-quali contract: null every quali/grid/sprint feature + all targets +

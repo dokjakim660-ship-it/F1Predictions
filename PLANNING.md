@@ -375,6 +375,26 @@ Vorhersage der vier **Qualifying-Märkte** (`pole`, `top3_quali`, `top10_quali`,
 
 ---
 
+## 17. Phase 5.3 — Track-Overtaking-Index (Streckenbewertung)
+
+**Stand: ✅ DONE 2026-06-01.** User-Frage: „bei welchen Strecken finden wie viele Überholungen statt?" — bisher gab es nur statische Track-Attribute (Länge, Kurven, DRS-Zonen, street/permanent), keine gemessene Überhol-Statistik. Neu aus den bereits ingesteten `laps.parquet` rekonstruiert.
+
+**Messung — `src/process/overtakes.py` (neuer L2-Prozessor):** Paarweise On-Track-Pass-Erkennung aus der Per-Runde-`Position`-Spalte. Ein echter Pass = zwei Autos tauschen zwischen zwei aufeinanderfolgenden **grünen** Runden die Position; ausgeschlossen: Runde 1 (Startgewühl), Boxenrunden (PitIn/Out dieser oder Vorrunde, je Auto), Nicht-Grün (SC/VSC/Rot via TrackStatus). Ordered-Pairs statt summierter Positions-Deltas ist der Kern: Boxenstopp-Zyklen und Backmarker-Lapping zählen strukturell **nicht** mit (der Delta-Proxy überschätzt ~3–5×). Output `data/processed/overtakes.parquet`, eine Zeile pro Rennen; unbrauchbare Rennen → `is_usable=False`.
+
+**Validierung:** Ø **33,1** / Median 32 / Range 0–81 Überholungen pro Rennen (178 Rennen, 176 nutzbar) — exakt im offiziellen DHL-Bereich (~30–50). Streckenrangfolge deckt sich punktgenau mit Domänenwissen: Monaco ~7 (unten), Albert Park/Hungaroring/Singapur niedrig, Vegas/Interlagos/Red Bull Ring/Bahrain ~50 (oben). Spa min=0 ist kein Bug (Regen-/SC-Rennen 2021).
+
+**Feature — `track_overtakes_prior_mean` in `build.py`:** Expanding-Mean der Überholungen aus den **strikt vorherigen** Rennen je Strecke, `.shift(1)` = leakage-sicher (gleiches Muster wie `driver_track_finish_l3`). Erstauftritt einer Strecke → NaN → Median-Imputation. Neuer Guard in `tests/test_no_leakage.py` rechnet jeden Wert unabhängig aus `overtakes.parquet` nach. `just build-l2` + beide next-race-Recipes um `overtakes build` erweitert.
+
+| Stufe | Inhalt | Artefakt |
+|---|---|---|
+| A | Messung + Validierung | `src/process/overtakes.py`, `overtakes.parquet` |
+| B | Feature + Guard | `build.py` (`track_overtakes_prior_mean`), `tests/test_no_leakage.py`, justfile |
+| C | Ablation (3 Targets) | `ablation.py` `- overtaking`-Variante + Race-Rank-A/B |
+
+**Verdikt (Ablation, Holdout 41 Rennen):** Wirkt **genau dort, wo die Theorie es vorhersagt**. Pace-dominierte Brier-Targets profitieren nicht — Podium d_ens −0.0002, Teammate −0.0007 (beide Rauschen-Niveau, die anderen Track-Features proxen die Strecke bereits). Das **Race-Rank-Modell** dagegen richtungskonsistent besser: RegEnsemble Position-MAE 3.415→**3.364** (+0.051), XGBReg +0.041, kein Baum-Modell schlechter — aber paired-bootstrap-CI [−0.014, +0.120] **knapp nicht signifikant** auf 41 Rennen. **Entscheidung (User): global behalten (Option 1)** statt per-Modell-Selektion — Letzteres würde auf Rausch-Deltas optimieren (Overfitting-Falle, vgl. 3.7). Bei größerem Holdout neu bewerten.
+
+---
+
 ## Memory-Referenzen (für Folge-Sessions)
 
 Die detaillierten Entscheidungen liegen in `C:\Users\morit\.claude\projects\C--Projekte-F1Predictions\memory\`:

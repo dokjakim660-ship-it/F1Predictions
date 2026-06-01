@@ -136,6 +136,47 @@ def test_future_race_weather_is_forecast_not_archive() -> None:
     )
 
 
+def test_track_overtaking_index_is_lagged_circuit_level() -> None:
+    """track_overtakes_prior_mean is a circuit property from STRICTLY-PRIOR races.
+
+    Two guarantees, both broken by the obvious lookahead bug (folding race N's own
+    overtake count into its feature):
+      - every driver in one race shares the value (it is per-circuit, not per-car);
+      - a circuit's first race in the data has no history -> NaN;
+      - the value equals the expanding mean of that circuit's earlier races,
+        re-derived independently from overtakes.parquet.
+    """
+    df = _load_features_or_skip()
+    col = "track_overtakes_prior_mean"
+    assert col in df.columns, f"{col} missing from feature table"
+
+    # Per-circuit, not per-car: constant across drivers in a (track, race).
+    per_race = df.groupby(["track_id", "race_id"])[col].nunique(dropna=False)
+    assert (per_race <= 1).all(), f"{col} varies between team-mates -- not circuit-level"
+
+    # Independent re-derivation from the raw overtake counts.
+    from src.process.overtakes import OVERTAKES_PARQUET
+    from src.utils.tracks import race_to_track_id
+
+    ov = _load_or_skip(OVERTAKES_PARQUET)
+    inv = _load_or_skip(INVENTORY_PATH)[["race_id", "circuit_id"]]
+    ov = ov[ov["is_usable"].astype(bool)].merge(inv, on="race_id", how="left")
+    ov["track_id"] = [race_to_track_id(r, c) for r, c in zip(ov["race_id"], ov["circuit_id"])]
+    ov = ov.sort_values(["track_id", "year", "round"])
+    ov["expected"] = (
+        ov.groupby("track_id")["n_overtakes"]
+        .transform(lambda x: x.expanding(min_periods=1).mean().shift(1))
+    )
+
+    got = df[["race_id", "track_id", col]].drop_duplicates(["race_id", "track_id"])
+    merged = got.merge(ov[["race_id", "expected"]], on="race_id", how="left")
+    pd.testing.assert_series_equal(
+        merged[col].reset_index(drop=True),
+        merged["expected"].reset_index(drop=True),
+        check_names=False,
+    )
+
+
 def test_team_features_follow_team_not_driver_after_switch() -> None:
     """team_form_* is keyed on the constructor, not the driver.
 

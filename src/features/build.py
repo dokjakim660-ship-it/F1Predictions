@@ -38,6 +38,7 @@ import pandas as pd
 from src.process.fastf1 import load_sessions
 from src.process.jolpica import load_results
 from src.process.openmeteo import load_weather
+from src.process.overtakes import load_overtakes
 from src.utils.paths import FEATURES_DIR
 from src.utils.race_inventory import load_inventory
 from src.utils.tracks import load_tracks, race_to_track_id
@@ -109,6 +110,9 @@ FEATURE_COLUMNS = [
     "track_n_corners",
     "track_n_drs_zones",
     "track_is_street",
+    # Circuit overtaking difficulty: mean on-track passes in this track's prior
+    # races (lagged, no-lookahead -- see _add_track_overtaking).
+    "track_overtakes_prior_mean",
     # Driver x track history (lagged)
     "driver_track_finish_l3",
     # Weather at race time (forecast pre-race, archive post-race -- see process/openmeteo)
@@ -503,6 +507,35 @@ def _add_driver_track_history(df: pd.DataFrame) -> pd.DataFrame:
     return df.drop(columns=["_pp"])
 
 
+def _add_track_overtaking(df: pd.DataFrame, overtakes: pd.DataFrame) -> pd.DataFrame:
+    """Lagged circuit-overtaking index: mean on-track passes in this track's
+    PRIOR races (expanding mean, .shift(1) = no lookahead).
+
+    The current race's own overtake count is itself a race outcome (it is derived
+    from the finishing-order churn), so it can never feed its own row. A circuit's
+    first appearance in the data starts NaN and is median-imputed downstream, like
+    every other cold-start lagged feature. Collapsing to one row per (track, race)
+    first keeps a 20-car race from counting as 20 observations in the window --
+    the same guard _add_team_form uses.
+    """
+    ov = overtakes.loc[overtakes["is_usable"].astype(bool), ["race_id", "n_overtakes"]]
+    per_race = (
+        df[["track_id", "race_id", "race_date"]]
+        .drop_duplicates(subset=["track_id", "race_id"])
+        .merge(ov, on="race_id", how="left")
+        .sort_values(["track_id", "race_date"])
+    )
+    g = per_race.groupby("track_id", sort=False)
+    per_race["track_overtakes_prior_mean"] = g["n_overtakes"].transform(
+        lambda x: x.expanding(min_periods=1).mean().shift(1)
+    )
+    return df.merge(
+        per_race[["track_id", "race_id", "track_overtakes_prior_mean"]],
+        on=["track_id", "race_id"],
+        how="left",
+    )
+
+
 def _add_weather_features(df: pd.DataFrame, weather: pd.DataFrame) -> pd.DataFrame:
     df = df.merge(weather[_WEATHER_COLS], on="race_id", how="left")
     # is_wet stored as nullable bool/object -> cast to 0/1 float, NaN preserved
@@ -529,6 +562,7 @@ def compute_features(
     inv: pd.DataFrame,
     tracks: pd.DataFrame,
     weather: pd.DataFrame,
+    overtakes: pd.DataFrame,
 ) -> pd.DataFrame:
     """Run the L2 -> L3 feature pipeline on pre-loaded tables.
 
@@ -554,6 +588,7 @@ def compute_features(
     df = _add_team_standings(df)
     df = _add_track_features(df, inv, tracks)
     df = _add_driver_track_history(df)
+    df = _add_track_overtaking(df, overtakes)
     df = _add_weather_features(df, weather)
     df = _add_season_era(df, inv)
 
@@ -571,7 +606,12 @@ def compute_features(
 
 def build_features() -> pd.DataFrame:
     return compute_features(
-        load_results(), load_sessions(), load_inventory(), load_tracks(), load_weather()
+        load_results(),
+        load_sessions(),
+        load_inventory(),
+        load_tracks(),
+        load_weather(),
+        load_overtakes(),
     )
 
 
