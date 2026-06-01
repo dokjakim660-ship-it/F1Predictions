@@ -464,6 +464,36 @@ Idee nicht erneut gebaut wird. Bei deutlich größerem Holdout neu erwägbar.
 
 ---
 
+## 21. Phase 5.7 — Nässe-Skill-Delta (Backlog #6, ✅ KEPT)
+
+**Stand: ✅ DONE 2026-06-02 (behalten).** Backlog-Idee #6: manche Fahrer sind Regenspezialisten,
+manche nicht — die Level-Form-Features mitteln Nass+Trocken zusammen und können das nicht trennen.
+Feature `driver_wet_skill_delta` = (gelaggter Per-Fahrer-Expanding-Mean der Finish-Position-Proxy in
+**trockenen** Rennen) − (in **nassen** Rennen), Split via `weather_is_wet_race_hour`. Positiv = finisht
+im Nassen besser = Regenspezialist. Standing-Skill-Rating für jedes Rennen; das Modell kombiniert es
+selbst mit dem Nass-Forecast des Zielrennens. Läuft nach `_add_weather_features`; beide Means
+.shift(1)-gelaggt je Fahrer (no-lookahead). 10.9% NaN (braucht ≥1 vorheriges Nass- UND Trockenrennen).
+Kein neues Artefakt. No-Leakage-Guard (unabhängiger Recompute + First-Race-NaN) + Round-Trip grün.
+
+**Verdikt (Holdout, 41 Rennen) — stärkster Race-Rank-Gewinn aller Backlog-Features bisher:** Race-Rank
+deployt Ridge 3.221→3.212 (−0.009), RegEnsemble 3.434→**3.320** (−0.114), XGBReg −0.061, LGBMReg −0.077;
+nur die Ranker verlieren. Brier: Podium `d_ens −0.0014`, Teammate `+0.0005` (Markt leicht positiv).
+Quali-Rank pre_weekend flach (3.424→3.422), post_fp2 leicht schlechter.
+
+**Entscheidung (Claude, vom User delegiert): KEEP (global, Option 1)** — analog Overtaking (5.3) /
+Team-Execution (5.4), die wegen Race-Rank-Gewinnen behalten wurden; dieses Feature hilft der deployten
+Ridge + Regressions-Ensemble **deutlich klarer** als jene. Das Podium-Minus ist kein spezifischer
+Schaden: bei diesem gesättigten Target zeigen fast ALLE Features negatives d_ens (Wetter −0.0017,
+WCC −0.0013) — Grid+Pace dominieren, Zusatzfeatures fügen nur Varianz hinzu; −0.0014 ist Standard-
+Rauschen. **Caveats:** (1) Small-N-Rauschen in der Fahrer-Rangliste — Verstappen +1.88 / Russell +2.88
+plausibel, aber Backmarker/Rookies (Hartley +4.8, Bortoleto −5.7) sind 1–2-Rennen-Artefakte; (2) das aus
+Renn-Finishes gebaute Feature ist in den Quali-Rank-Sets konzeptionell fehlplatziert (leichtes
+post_fp2-Minus) — späteres Refinement (z.B. eigener Quali-Nässe-Split oder Quali-Set-Ausschluss).
+
+**Nächster Backlog-Einstieg:** #11 Safety-Car-Exposition (echter Strategie-Wert, `laps.parquet` reicht).
+
+---
+
 ## Memory-Referenzen (für Folge-Sessions)
 
 Die detaillierten Entscheidungen liegen in `C:\Users\morit\.claude\projects\C--Projekte-F1Predictions\memory\`:

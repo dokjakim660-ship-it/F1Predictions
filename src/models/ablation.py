@@ -66,6 +66,7 @@ TEAM_EXEC_FEATS = ["team_exec_residual_l5", "team_exec_residual_l10"]
 TEAMMATE_QUALI_FEATS = ["driver_teammate_quali_gap_l5"]
 PIT_CREW_FEATS = ["team_pit_speed_resid_l5"]
 START_FEATS = ["driver_start_pos_gain_l5"]
+WET_SKILL_FEATS = ["driver_wet_skill_delta"]
 
 
 @dataclass
@@ -105,6 +106,9 @@ def _make_variants() -> list[VariantSpec]:
         ),
         VariantSpec(
             "- start", drop_features=START_FEATS, decay_per_month=DEFAULT_DECAY_PER_MONTH
+        ),
+        VariantSpec(
+            "- wet skill", drop_features=WET_SKILL_FEATS, decay_per_month=DEFAULT_DECAY_PER_MONTH
         ),
         VariantSpec("- time-decay weights", drop_features=[], decay_per_month=None),
     ]

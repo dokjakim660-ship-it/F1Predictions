@@ -346,6 +346,41 @@ def test_start_performance_is_lagged_per_driver() -> None:
     )
 
 
+def test_wet_skill_delta_is_lagged_per_driver() -> None:
+    """driver_wet_skill_delta = lagged (dry_mean - wet_mean) of the finish-position
+    proxy, split by weather_is_wet_race_hour, re-derived independently.
+
+    Guards:
+      - equals the .shift(1)-lagged per-driver expanding means of the wet and dry
+        position proxies (folding race N's own result in -- a missing lag -- would
+        break the equality);
+      - structurally NaN until a driver has both a prior wet and a prior dry race.
+    """
+    df = _load_features_or_skip()
+    col = "driver_wet_skill_delta"
+    assert col in df.columns, f"{col} missing from feature table"
+
+    work = df.sort_values(["driver_id", "year", "round"]).reset_index(drop=True)
+    pp = work["finish_position"].where(~work["dnf"], _DNF_POSITION_PROXY).astype(float)
+    wet = work["weather_is_wet_race_hour"]
+    wet_mean = pp.where(wet == 1.0).groupby(work["driver_id"], sort=False).transform(
+        lambda x: x.expanding(min_periods=1).mean().shift(1)
+    )
+    dry_mean = pp.where(wet == 0.0).groupby(work["driver_id"], sort=False).transform(
+        lambda x: x.expanding(min_periods=1).mean().shift(1)
+    )
+    expected = dry_mean - wet_mean
+    pd.testing.assert_series_equal(
+        work[col].reset_index(drop=True),
+        expected.reset_index(drop=True),
+        check_names=False,
+    )
+
+    # A driver's first-ever race has no prior wet or dry history -> NaN.
+    first_race = work.groupby("driver_id", sort=False).head(1)
+    assert first_race[col].isna().all()
+
+
 def test_team_features_follow_team_not_driver_after_switch() -> None:
     """team_form_* is keyed on the constructor, not the driver.
 

@@ -99,6 +99,9 @@ FEATURE_COLUMNS = [
     # Driver pace isolated from the car: lagged qualifying gap to one's team-mate
     # (same machinery -> the delta is the driver). See _add_teammate_quali_gap.
     "driver_teammate_quali_gap_l5",
+    # Wet-weather skill: lagged dry-minus-wet finish-position gap, positive = rain
+    # specialist (see _add_wet_skill). Combined with the wet forecast by the model.
+    "driver_wet_skill_delta",
     # Lagged start craft: places gained grid->lap1 (see _add_start_performance).
     "driver_start_pos_gain_l5",
     # Constructor rolling form (lagged)
@@ -732,6 +735,47 @@ def _add_weather_features(df: pd.DataFrame, weather: pd.DataFrame) -> pd.DataFra
     return df
 
 
+def _add_wet_skill(df: pd.DataFrame) -> pd.DataFrame:
+    """Lagged wet-weather skill: how much better (or worse) a driver finishes in
+    WET races compared with their own dry-race level, over their prior history.
+
+    Some drivers are rain specialists -- their relative result jumps when the
+    track is wet -- and some are notably worse. The level form features
+    (driver_form_finish_*) average wet and dry races together and so cannot
+    express that split. Here we keep two .shift(1)-lagged per-driver expanding
+    means of the finishing-position proxy -- one over the driver's prior WET
+    races, one over their prior DRY races -- and take
+
+        wet_skill_delta = dry_mean - wet_mean
+
+    Positive = finishes BETTER (lower position) in the wet than in the dry = a
+    rain specialist; negative = struggles in the wet. The feature is a standing
+    skill rating defined for every race regardless of its own weather; the model
+    combines it with weather_is_wet_race_hour (the forecast for the upcoming race)
+    on its own.
+
+    Wet/dry is read from weather_is_wet_race_hour, so this must run AFTER
+    _add_weather_features. Both means are lagged per driver, so race N never feeds
+    its own feature (no-lookahead). DNFs keep the worst-case position proxy --
+    staying on a wet track is itself part of the skill. Defined only once a driver
+    has at least one prior wet AND one prior dry race; NaN otherwise (rare-event
+    small N), median-imputed downstream.
+    """
+    df = df.sort_values(["driver_id", "race_date"]).reset_index(drop=True)
+    pp = _pos_proxy(df)
+    wet = df["weather_is_wet_race_hour"]
+    wet_pp = pp.where(wet == 1.0)
+    dry_pp = pp.where(wet == 0.0)
+    wet_mean = wet_pp.groupby(df["driver_id"], sort=False).transform(
+        lambda x: x.expanding(min_periods=1).mean().shift(1)
+    )
+    dry_mean = dry_pp.groupby(df["driver_id"], sort=False).transform(
+        lambda x: x.expanding(min_periods=1).mean().shift(1)
+    )
+    df["driver_wet_skill_delta"] = dry_mean - wet_mean
+    return df
+
+
 def _add_season_era(df: pd.DataFrame, inv: pd.DataFrame) -> pd.DataFrame:
     # Race number normalised by the season length, so "round 10" means the same
     # part of the year whether the calendar has 21 races or 24.
@@ -782,6 +826,7 @@ def compute_features(
     df = _add_pit_crew_speed(df, sessions)
     df = _add_start_performance(df, sessions)
     df = _add_weather_features(df, weather)
+    df = _add_wet_skill(df)
     df = _add_season_era(df, inv)
 
     out_cols = (
