@@ -63,6 +63,9 @@ WCC_FEATS = ["team_season_points_pre_race", "team_season_pos_pre_race"]
 ERA_2026_FEATS = ["era_2026plus"]
 OVERTAKING_FEATS = ["track_overtakes_prior_mean"]
 TEAM_EXEC_FEATS = ["team_exec_residual_l5", "team_exec_residual_l10"]
+TEAMMATE_QUALI_FEATS = ["driver_teammate_quali_gap_l5"]
+PIT_CREW_FEATS = ["team_pit_speed_resid_l5"]
+START_FEATS = ["driver_start_pos_gain_l5"]
 
 
 @dataclass
@@ -92,6 +95,16 @@ def _make_variants() -> list[VariantSpec]:
         ),
         VariantSpec(
             "- team execution", drop_features=TEAM_EXEC_FEATS, decay_per_month=DEFAULT_DECAY_PER_MONTH
+        ),
+        VariantSpec(
+            "- teammate quali", drop_features=TEAMMATE_QUALI_FEATS,
+            decay_per_month=DEFAULT_DECAY_PER_MONTH,
+        ),
+        VariantSpec(
+            "- pit crew", drop_features=PIT_CREW_FEATS, decay_per_month=DEFAULT_DECAY_PER_MONTH
+        ),
+        VariantSpec(
+            "- start", drop_features=START_FEATS, decay_per_month=DEFAULT_DECAY_PER_MONTH
         ),
         VariantSpec("- time-decay weights", drop_features=[], decay_per_month=None),
     ]

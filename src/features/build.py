@@ -96,6 +96,11 @@ FEATURE_COLUMNS = [
     "driver_form_quali_pos_l5",
     "driver_career_races",
     "driver_age_years",
+    # Driver pace isolated from the car: lagged qualifying gap to one's team-mate
+    # (same machinery -> the delta is the driver). See _add_teammate_quali_gap.
+    "driver_teammate_quali_gap_l5",
+    # Lagged start craft: places gained grid->lap1 (see _add_start_performance).
+    "driver_start_pos_gain_l5",
     # Constructor rolling form (lagged)
     "team_form_points_l5",
     "team_form_finish_l5",
@@ -109,6 +114,8 @@ FEATURE_COLUMNS = [
     # over prior races (lagged, no-lookahead -- see _add_team_execution_residual).
     "team_exec_residual_l5",
     "team_exec_residual_l10",
+    # Lagged pit-crew speed vs track norm (see _add_pit_crew_speed).
+    "team_pit_speed_resid_l5",
     # Track attributes
     "track_length_km",
     "track_n_corners",
@@ -413,6 +420,34 @@ def _add_driver_form(df: pd.DataFrame) -> pd.DataFrame:
     return df.drop(columns=["_pp"])
 
 
+def _add_teammate_quali_gap(df: pd.DataFrame) -> pd.DataFrame:
+    """Lagged qualifying gap to one's own team-mate -- driver pace isolated from
+    the car (both cars are mechanically identical, so the delta is the driver).
+
+    Per race the gap is this driver's q_gap_to_pole_ms minus the team-mate's,
+    defined only for the normal two-car constructor with BOTH cars setting a
+    time (a missing team-mate lap leaves it NaN). Negative = faster than the
+    team-mate. A single race is noisy (one scruffy Q3 lap), so the FEATURE is the
+    .shift(1)-lagged rolling mean over the driver's recent races -- a persistent
+    "how far ahead of my garage side am I" skill rating, NOT the car's pace
+    (which driver_form_quali_pos_l5 already carries). Rolls over whoever the
+    team-mate was each weekend; that is the intended "vs current machinery"
+    reading and travels correctly across team switches.
+    """
+    df = df.sort_values(["driver_id", "race_date"]).reset_index(drop=True)
+    grp = df.groupby(["race_id", "constructor_id"], sort=False)["q_gap_to_pole_ms"]
+    n_valid = grp.transform(lambda s: s.notna().sum())
+    teammate_gap = grp.transform("sum") - df["q_gap_to_pole_ms"]  # 2 valid cars => team-mate's value
+    df["_tmq"] = np.where(
+        (n_valid == 2) & df["q_gap_to_pole_ms"].notna(),
+        df["q_gap_to_pole_ms"] - teammate_gap,
+        np.nan,
+    )
+    g = df.groupby("driver_id", sort=False)
+    df["driver_teammate_quali_gap_l5"] = g["_tmq"].transform(lambda x: _roll_shift(x, 5))
+    return df.drop(columns=["_tmq"])
+
+
 def _add_team_form(df: pd.DataFrame) -> pd.DataFrame:
     # Collapse the two cars to one row per (constructor, race) before rolling,
     # otherwise a five-race window only spans 2.5 actual race weekends.
@@ -528,10 +563,20 @@ def _add_team_execution_residual(df: pd.DataFrame, sessions: pd.DataFrame) -> pd
         sessions[["race_id", "driver_id", pace_col]], on=["race_id", "driver_id"], how="left"
     )
     finishers = base[(~base["dnf"].astype(bool)) & base[pace_col].notna()].copy()
+    # Sort with driver_id as a deterministic tiebreaker so rank(method="first")
+    # resolves exact pace ties the same way regardless of upstream row order
+    # (otherwise a single tie cascades through the per-rank expanding mean).
+    finishers = finishers.sort_values(["race_date", "driver_id"])
     finishers["_pace_rank"] = finishers.groupby("race_id", sort=False)[pace_col].rank(method="first")
     finishers["_resid_raw"] = finishers["_pace_rank"] - finishers["finish_position"].astype(float)
-    rank_mean = finishers.groupby("_pace_rank")["_resid_raw"].transform("mean")
-    finishers["_resid"] = finishers["_resid_raw"] - rank_mean
+    # Floor/ceiling debias from the per-rank expectation, but computed over
+    # STRICTLY-PRIOR races only (expanding().shift(1)), so the reference never
+    # sees the current or future races -- a global mean would leak the target
+    # race into its own feature (and fail the next-race round-trip guard).
+    rank_mean_prior = finishers.groupby("_pace_rank", sort=False)["_resid_raw"].transform(
+        lambda x: x.expanding().mean().shift(1)
+    )
+    finishers["_resid"] = finishers["_resid_raw"] - rank_mean_prior
 
     resid = finishers.groupby(["constructor_id", "race_id"], as_index=False)["_resid"].mean()
     # One row per (constructor, race) the team actually entered -- left-join the
@@ -550,6 +595,74 @@ def _add_team_execution_residual(df: pd.DataFrame, sessions: pd.DataFrame) -> pd
     return df.merge(
         per_race[["constructor_id", "race_id", "team_exec_residual_l5", "team_exec_residual_l10"]],
         on=["constructor_id", "race_id"],
+        how="left",
+    )
+
+
+def _add_pit_crew_speed(df: pd.DataFrame, sessions: pd.DataFrame) -> pd.DataFrame:
+    """Lagged pit-crew speed: how fast a constructor's pit lane turnaround is
+    relative to the track-typical time, averaged over prior races (.shift(1)).
+
+    The raw pit-lane median (entry-to-exit) is dominated by the track's pit-lane
+    LENGTH/transit, which says nothing about the crew. We make it field-relative
+    WITHIN each race -- subtract that race's median pit-lane time -- which removes
+    the track transit (every car shares the track that weekend) and any race-day
+    pit-lane condition, with no cross-race statistic that could leak the target
+    race. Negative = quicker than the field that day = faster crew. Both cars
+    collapse to one value per (constructor, race); lagged so the team's own race
+    never feeds its feature.
+    """
+    col = "race_pit_lane_median_ms"
+    if col not in sessions.columns:
+        df["team_pit_speed_resid_l5"] = np.nan
+        return df
+    base = df[["race_id", "driver_id", "constructor_id", "race_date", "track_id"]].merge(
+        sessions[["race_id", "driver_id", col]], on=["race_id", "driver_id"], how="left"
+    )
+    base = base[base[col].notna()].copy()
+    base["_resid"] = base[col] - base.groupby("race_id")[col].transform("median")
+    resid = base.groupby(["constructor_id", "race_id"], as_index=False)["_resid"].mean()
+    per_race = (
+        df[["constructor_id", "race_id", "race_date"]]
+        .drop_duplicates()
+        .merge(resid, on=["constructor_id", "race_id"], how="left")
+        .sort_values(["constructor_id", "race_date"])
+        .reset_index(drop=True)
+    )
+    per_race["team_pit_speed_resid_l5"] = per_race.groupby("constructor_id", sort=False)[
+        "_resid"
+    ].transform(lambda x: _roll_shift(x, 5))
+    return df.merge(
+        per_race[["constructor_id", "race_id", "team_pit_speed_resid_l5"]],
+        on=["constructor_id", "race_id"],
+        how="left",
+    )
+
+
+def _add_start_performance(df: pd.DataFrame, sessions: pd.DataFrame) -> pd.DataFrame:
+    """Lagged start performance: places gained between the grid and the end of
+    lap 1, averaged over the driver's prior races (.shift(1)).
+
+    start_gain = grid_effective - lap1_position; positive = moved up off the
+    line (launch + first-lap racecraft). Distinct from the overtaking index,
+    which deliberately EXCLUDES lap 1. A pure driver signal, so it rolls per
+    driver. Not track-debiased: positions gained is already a relative measure.
+    """
+    col = "race_lap1_position"
+    if col not in sessions.columns:
+        df["driver_start_pos_gain_l5"] = np.nan
+        return df
+    base = df[["race_id", "driver_id", "race_date", "grid_effective"]].merge(
+        sessions[["race_id", "driver_id", col]], on=["race_id", "driver_id"], how="left"
+    )
+    base["_gain"] = base["grid_effective"] - base[col]
+    base = base.sort_values(["driver_id", "race_date"]).reset_index(drop=True)
+    base["driver_start_pos_gain_l5"] = base.groupby("driver_id", sort=False)["_gain"].transform(
+        lambda x: _roll_shift(x, 5)
+    )
+    return df.merge(
+        base[["race_id", "driver_id", "driver_start_pos_gain_l5"]],
+        on=["race_id", "driver_id"],
         how="left",
     )
 
@@ -659,12 +772,15 @@ def compute_features(
     df = _add_fp2_features(df)
     df = _add_sprint_features(df)
     df = _add_driver_form(df)
+    df = _add_teammate_quali_gap(df)
     df = _add_team_form(df)
     df = _add_team_standings(df)
     df = _add_team_execution_residual(df, sessions)
     df = _add_track_features(df, inv, tracks)
     df = _add_driver_track_history(df)
     df = _add_track_overtaking(df, overtakes)
+    df = _add_pit_crew_speed(df, sessions)
+    df = _add_start_performance(df, sessions)
     df = _add_weather_features(df, weather)
     df = _add_season_era(df, inv)
 

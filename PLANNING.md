@@ -407,6 +407,33 @@ Vorhersage der vier **Qualifying-Märkte** (`pole`, `top3_quali`, `top10_quali`,
 
 **Lehre:** Gute Domänen-Intuition ≠ gutes Maß. Ein Residual gegen eine **begrenzte** Zielgröße (Position 1..N) ist an den Rändern strukturell verzerrt — vor der Verwendung de-biasen.
 
+**Leakage-Fix (2026-06-01, Phase 5.5):** Der Detrend-Mittelwert pro Pace-Rang war initial global (sah das Zielrennen) → Round-Trip-Test `test_no_leakage_next.py` + `test_no_leakage_prequali.py` fingen es. Fix: expanding().shift(1) pro Pace-Rang. Zusätzlicher Tiebreaker `["race_date","driver_id"]` in `sort_values` für deterministische `rank(method="first")` über Rennen.
+
+---
+
+## 19. Phase 5.5 — Fahrer/Team-Skill-Features (Teammate-Gap, Pit-Crew, Start)
+
+**Stand: ✅ DONE 2026-06-01.** User-Auftrag: neue Feature-Ideen gebaut aus dem Backlog-Plan — 4 gebaut, 1 als Falle entlarvt.
+
+**Features (alle in `build.py`, Sessions um 2 Spalten erweitert, kein neues L2-Artefakt):**
+
+| Feature | Beschreibung | Detrend | Coverage |
+|---|---|---|---|
+| `driver_teammate_quali_gap_l5` | ms-Differenz zu Teamkollege in Q, Rolling L5, `.shift(1)` | nein | 98.8% |
+| `team_pit_speed_resid_l5` | Pit-Lane-Median vs. Feld-Median **dieses Rennens** (within-race), Cons. kollabiert, Rolling L5 | within-race | 99% |
+| `driver_start_pos_gain_l5` | Grid − Lap-1-Position, Rolling L5 | nein | 99% |
+
+**Sessions.parquet erweitert** um `race_pit_lane_median_ms` + `race_lap1_position` (PitIn/Out-Delta bzw. LapNumber==1 aus `laps.parquet`). `race_tyre_deg_ms_per_lap` gebaut, dann entfernt (s.u.).
+
+**Verdikt (Podium + Teammate Ablation + Rank-A/B):**
+- `teammate_quali`: **Bester Gewinn** — Podium-Brier +0.0003, Rank-Ridge +0.007, Rank-Ensemble +0.041. Face-Validity: Verstappen −1.07s / Pérez +1.16s.
+- `pit_crew` + `start`: Neutral auf Brier, leicht negativ auf Rank-Ensemble (−0.04/−0.05) — **trotzdem behalten** (User-Entscheidung: Omitted-Variable-Kontrolle, neutrales Feature reduziert Falschsignal).
+- Alle 3 zusammen: Rank-Ensemble neutral (−0.019 auf Ensemble, aber Ridge +0.007).
+
+**Tyre-Degradation-Falle (⚠️ wichtige Warnung):** `race_tyre_deg_ms_per_lap` (Stint-Slope) gebaut, spektakuläre Verbesserung (Rank-MAE 3.43→2.83). Permutation-Test + NaN-Analyse entlarvt als Fingerabdruck-Leak: NaN-Zeilen (7%) haben mittleren Zielrang 18 vs. 10 bei vorhandenen Werten → Bäume lernen Auto-/Fahrer-Identität auswendig. Null-Effekt auf Podium-Brier (Kontrast!) = eindeutiges Zeichen. **Entfernt.** Generelle Regel: spektakulärer Einzel-Gewinn + keine Wirkung auf andere Targets + nur Bäume → sofort Permutation + NaN-Korrelation prüfen.
+
+**Tests:** 3 neue No-Leakage-Guards (pit/start je unabhängig nachgerechnet; team_exec-Test an neuen Detrend angepasst). Volle Suite 134 Tests grün.
+
 ---
 
 ## Memory-Referenzen (für Folge-Sessions)

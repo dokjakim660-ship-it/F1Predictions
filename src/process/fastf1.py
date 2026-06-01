@@ -137,8 +137,33 @@ def _race_pace_rows(session_dir: Path, race_id: str, year: int, round_no: int) -
         .reset_index()
     )
 
-    df = per_driver_all.merge(n_compounds, on="Driver", how="left").merge(
-        per_driver_clean, on="Driver", how="left"
+    # Pit-lane time per stop = the out-lap's PitOutTime minus the in-lap's
+    # PitInTime (entry-to-exit). Median over a driver's stops; raw, so it still
+    # carries the track's pit-lane transit -- the constructor feature debiases
+    # that by track downstream. Filter to positive, sane (<60s) durations.
+    lap_sorted = laps.sort_values(["Driver", "LapNumber"])
+    prev_in = lap_sorted.groupby("Driver", sort=False)["PitInTime"].shift(1)
+    lap_sorted = lap_sorted.assign(_pit_ms=_td_ms(lap_sorted["PitOutTime"] - prev_in))
+    pit = (
+        lap_sorted[(lap_sorted["_pit_ms"] > 0) & (lap_sorted["_pit_ms"] < 60_000)]
+        .groupby("Driver", sort=False)["_pit_ms"]
+        .median()
+        .reset_index(name="race_pit_lane_median_ms")
+    )
+
+    # Lap-1 classified position -> start performance (grid - lap1) is built later.
+    lap1 = (
+        laps.loc[laps["LapNumber"] == 1, ["Driver", "Position"]]
+        .dropna()
+        .drop_duplicates("Driver")
+        .rename(columns={"Position": "race_lap1_position"})
+    )
+
+    df = (
+        per_driver_all.merge(n_compounds, on="Driver", how="left")
+        .merge(per_driver_clean, on="Driver", how="left")
+        .merge(pit, on="Driver", how="left")
+        .merge(lap1, on="Driver", how="left")
     )
 
     leader_ms = df["race_clean_median_lap_ms"].min(skipna=True)

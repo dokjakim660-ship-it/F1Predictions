@@ -205,10 +205,14 @@ def test_team_execution_residual_is_lagged_and_team_level() -> None:
         sessions, on=["race_id", "driver_id"], how="left"
     )
     fin = base[(~base["dnf"].astype(bool)) & base["race_clean_median_lap_ms"].notna()].copy()
+    fin = fin.sort_values(["race_date", "driver_id"])
     fin["_rank"] = fin.groupby("race_id", sort=False)["race_clean_median_lap_ms"].rank(method="first")
     fin["_resid_raw"] = fin["_rank"] - fin["finish_position"].astype(float)
-    # Match the production floor/ceiling debias: subtract the per-pace-rank mean.
-    fin["_resid"] = fin["_resid_raw"] - fin.groupby("_rank")["_resid_raw"].transform("mean")
+    # Match the production floor/ceiling debias: per-pace-rank mean over STRICTLY
+    # prior races (expanding().shift(1)), not a global mean.
+    fin["_resid"] = fin["_resid_raw"] - fin.groupby("_rank", sort=False)["_resid_raw"].transform(
+        lambda x: x.expanding().mean().shift(1)
+    )
     resid = fin.groupby(["constructor_id", "race_id"], as_index=False)["_resid"].mean()
 
     per_race = (
@@ -234,6 +238,112 @@ def test_team_execution_residual_is_lagged_and_team_level() -> None:
             merged[f"exp_{col}"].reset_index(drop=True),
             check_names=False,
         )
+
+
+def test_teammate_quali_gap_is_lagged_and_symmetric() -> None:
+    """driver_teammate_quali_gap_l5 = lagged rolling mean of the per-race gap to
+    one's own team-mate in qualifying.
+
+    Guards:
+      - within a two-car constructor in one race, the two raw gaps are exact
+        negatives (driver A is +x vs B iff B is -x vs A);
+      - the stored feature equals the .shift(1) rolling mean re-derived
+        independently from q_gap_to_pole_ms (folding the current race in would
+        break the equality -> catches a missing lag).
+    """
+    df = _load_features_or_skip()
+    col = "driver_teammate_quali_gap_l5"
+    assert col in df.columns, f"{col} missing from feature table"
+
+    # Re-derive the per-race raw gap from q_gap_to_pole_ms.
+    work = df[["race_id", "constructor_id", "driver_id", "race_date", "q_gap_to_pole_ms"]].copy()
+    grp = work.groupby(["race_id", "constructor_id"], sort=False)["q_gap_to_pole_ms"]
+    n_valid = grp.transform(lambda s: s.notna().sum())
+    teammate = grp.transform("sum") - work["q_gap_to_pole_ms"]
+    work["_raw"] = (work["q_gap_to_pole_ms"] - teammate).where(
+        (n_valid == 2) & work["q_gap_to_pole_ms"].notna()
+    )
+
+    # Symmetry: the two valid gaps in a constructor-race sum to ~0.
+    two_car = work[n_valid == 2].groupby(["race_id", "constructor_id"])["_raw"].sum()
+    assert two_car.abs().max() < 1e-6, "team-mate gaps are not antisymmetric within a constructor"
+
+    # Independent lagged re-derivation.
+    work = work.sort_values(["driver_id", "race_date"]).reset_index(drop=True)
+    work["expected"] = work.groupby("driver_id", sort=False)["_raw"].transform(
+        lambda x: x.rolling(window=5, min_periods=1).mean().shift(1)
+    )
+    merged = df[["race_id", "driver_id", col]].merge(
+        work[["race_id", "driver_id", "expected"]], on=["race_id", "driver_id"], how="left"
+    )
+    pd.testing.assert_series_equal(
+        merged[col].reset_index(drop=True),
+        merged["expected"].reset_index(drop=True),
+        check_names=False,
+    )
+
+
+def _sessions_col_or_skip(col: str) -> pd.DataFrame:
+    s = _load_or_skip(SESSIONS_PARQUET)
+    if col not in s.columns:
+        pytest.skip(f"{col} not in sessions.parquet -- rerun `python -m src.process.fastf1 build`")
+    return s[["race_id", "driver_id", col]]
+
+
+def test_pit_crew_speed_is_lagged_track_debiased_and_team_level() -> None:
+    """team_pit_speed_resid_l5 = lagged constructor pit-lane time vs track norm."""
+    df = _load_features_or_skip()
+    col = "team_pit_speed_resid_l5"
+    assert col in df.columns, f"{col} missing"
+    # team-level: both cars share the value.
+    per = df.groupby(["race_id", "constructor_id"])[col].nunique(dropna=False)
+    assert (per <= 1).all(), f"{col} varies between team-mates"
+
+    sess = _sessions_col_or_skip("race_pit_lane_median_ms")
+    base = df[["race_id", "driver_id", "constructor_id", "race_date", "track_id"]].merge(
+        sess, on=["race_id", "driver_id"], how="left"
+    )
+    base = base[base["race_pit_lane_median_ms"].notna()].copy()
+    base["_r"] = base["race_pit_lane_median_ms"] - base.groupby("race_id")[
+        "race_pit_lane_median_ms"
+    ].transform("median")
+    resid = base.groupby(["constructor_id", "race_id"], as_index=False)["_r"].mean()
+    per_race = (
+        df[["constructor_id", "race_id", "race_date"]].drop_duplicates()
+        .merge(resid, on=["constructor_id", "race_id"], how="left")
+        .sort_values(["constructor_id", "race_date"]).reset_index(drop=True)
+    )
+    per_race["exp"] = per_race.groupby("constructor_id", sort=False)["_r"].transform(
+        lambda x: x.rolling(5, min_periods=1).mean().shift(1)
+    )
+    m = df[["race_id", "constructor_id", col]].drop_duplicates(["race_id", "constructor_id"]).merge(
+        per_race[["race_id", "constructor_id", "exp"]], on=["race_id", "constructor_id"], how="left"
+    )
+    pd.testing.assert_series_equal(
+        m[col].reset_index(drop=True), m["exp"].reset_index(drop=True), check_names=False
+    )
+
+
+def test_start_performance_is_lagged_per_driver() -> None:
+    """driver_start_pos_gain_l5 = lagged rolling (grid_effective - lap1_position)."""
+    df = _load_features_or_skip()
+    col = "driver_start_pos_gain_l5"
+    assert col in df.columns, f"{col} missing"
+    sess = _sessions_col_or_skip("race_lap1_position")
+    base = df[["race_id", "driver_id", "race_date", "grid_effective"]].merge(
+        sess, on=["race_id", "driver_id"], how="left"
+    )
+    base["_g"] = base["grid_effective"] - base["race_lap1_position"]
+    base = base.sort_values(["driver_id", "race_date"]).reset_index(drop=True)
+    base["exp"] = base.groupby("driver_id", sort=False)["_g"].transform(
+        lambda x: x.rolling(5, min_periods=1).mean().shift(1)
+    )
+    m = df[["race_id", "driver_id", col]].merge(
+        base[["race_id", "driver_id", "exp"]], on=["race_id", "driver_id"], how="left"
+    )
+    pd.testing.assert_series_equal(
+        m[col].reset_index(drop=True), m["exp"].reset_index(drop=True), check_names=False
+    )
 
 
 def test_team_features_follow_team_not_driver_after_switch() -> None:
