@@ -96,6 +96,9 @@ FEATURE_COLUMNS = [
     "driver_form_quali_pos_l5",
     "driver_career_races",
     "driver_age_years",
+    # Form momentum: longer-window finish form minus recent (l10 - l3), positive =
+    # recent results better than the baseline = improving (see _add_driver_form).
+    "driver_form_momentum_l3_l10",
     # Driver pace isolated from the car: lagged qualifying gap to one's team-mate
     # (same machinery -> the delta is the driver). See _add_teammate_quali_gap.
     "driver_teammate_quali_gap_l5",
@@ -413,6 +416,14 @@ def _add_driver_form(df: pd.DataFrame) -> pd.DataFrame:
 
     df["driver_form_finish_l5"] = g["_pp"].transform(lambda x: _roll_shift(x, 5))
     df["driver_form_finish_l10"] = g["_pp"].transform(lambda x: _roll_shift(x, 10))
+    # Form momentum: how much better (or worse) the last ~3 races were than the
+    # ~10-race baseline. l10 - l3, both .shift(1)-lagged, so positive = recent
+    # finishes are AHEAD of the longer-run level = a driver on the up; negative =
+    # sliding. Captures the trend the level features (finish_l5/l10) cannot --
+    # catches a hot/cold streak earlier than the level alone. Lagged terms keep the
+    # no-lookahead contract. NaN on a driver's first race (no prior history).
+    l3 = g["_pp"].transform(lambda x: _roll_shift(x, 3))
+    df["driver_form_momentum_l3_l10"] = df["driver_form_finish_l10"] - l3
     df["driver_form_podium_rate_l10"] = g[TARGET_PODIUM].transform(
         lambda x: _roll_shift(x.astype(float), 10)
     )

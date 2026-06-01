@@ -346,6 +346,35 @@ def test_start_performance_is_lagged_per_driver() -> None:
     )
 
 
+def test_form_momentum_is_lagged_per_driver() -> None:
+    """driver_form_momentum_l3_l10 = driver_form_finish_l10 minus the lagged
+    3-race finish-proxy mean, re-derived independently.
+
+    Guards:
+      - equals (l10 - l3) of the .shift(1)-lagged per-driver rolling means of the
+        position proxy (a missing lag on either term would break the equality);
+      - structurally NaN on each driver's first race (no prior history).
+    """
+    df = _load_features_or_skip()
+    col = "driver_form_momentum_l3_l10"
+    assert col in df.columns, f"{col} missing from feature table"
+
+    work = df.sort_values(["driver_id", "year", "round"]).reset_index(drop=True)
+    pp = work["finish_position"].where(~work["dnf"], _DNF_POSITION_PROXY).astype(float)
+    g = pp.groupby(work["driver_id"], sort=False)
+    l3 = g.transform(lambda x: x.rolling(3, min_periods=1).mean().shift(1))
+    l10 = g.transform(lambda x: x.rolling(10, min_periods=1).mean().shift(1))
+    expected = l10 - l3
+    pd.testing.assert_series_equal(
+        work[col].reset_index(drop=True),
+        expected.reset_index(drop=True),
+        check_names=False,
+    )
+
+    first_race = work.groupby("driver_id", sort=False).head(1)
+    assert first_race[col].isna().all()
+
+
 def test_wet_skill_delta_is_lagged_per_driver() -> None:
     """driver_wet_skill_delta = lagged (dry_mean - wet_mean) of the finish-position
     proxy, split by weather_is_wet_race_hour, re-derived independently.

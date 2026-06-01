@@ -531,6 +531,33 @@ Floor/Ceiling-Falle, dort von vornherein de-biasen) oder #9 Form-Momentum (billi
 
 ---
 
+## 23. Phase 5.9 — Form-Momentum (Backlog #9, ✅ KEPT)
+
+**Stand: ✅ DONE 2026-06-02 (behalten).** Backlog-Idee #9: Trend statt Niveau — ist ein Fahrer im Auf-
+oder Abwind? Feature `driver_form_momentum_l3_l10` = `driver_form_finish_l10 − l3` (gelaggter 3- vs.
+10-Rennen-Mean der Finish-Position-Proxy je Fahrer). Positiv = jüngste Form besser als die längere
+Baseline = aufsteigend. Beide Terme bereits `.shift(1)`-gelaggt → leakage-sicher; berechnet inline in
+`_add_driver_form`, kein neues Artefakt. Distinkt von #10 (das war Team-WCC-Trend und scheiterte; dies ist
+Fahrer-Form-Streak). No-Leakage-Guard (unabhängiger l10−l3-Recompute + First-Race-NaN) + Round-Trip grün.
+
+**Verdikt (Holdout, 41 Rennen):** Race-Rank deployt Ridge 3.212→**3.202** (−0.010, gleich stark wie das
+behaltene #6); XGBRanker −0.077; Tree-Regressionen gemischt (LGBMReg +0.053). Brier: Podium d_ens +0.0015
+(geholfen), Teammate −0.0004 (flach). Quali pre_weekend Ridge flach, post_fp2 leicht besser. Das
+Podium-Plus ist Rausch-Band (in diesem Lauf hilft fast jedes Feature leicht, Baseline 0.0650 niedrig) —
+die Keep-Basis ist die **deployte-race-Ridge-Verbesserung + saubere neutrale Märkte**, exakt das Kriterium
+von #6/Overtaking/Team-Exec.
+
+**Entscheidung (Claude-Empfehlung, vom User delegiert): KEEP (global).** Klarste positive Bilanz nach #6,
+**sauberes Signal ohne Floor/Ceiling** (ein Richtungs-Maß ist nicht bounded — Mittelfeldfahrer haben beide
+Vorzeichen; Face-Validity plausibel: Antonelli/Hamilton im Aufwind, Verstappen 2026 im Abwind). Bestätigt
+die Session-Lehre: Features, die etwas isolieren, das Pace/Niveau NICHT proxen (Trend, Wet-Skill,
+Teammate-Gap), sind die Gewinner; bounded Positionsresiduen (Team-Exec, SC) die Verlierer.
+
+**Nächster Backlog-Einstieg:** #16 H2H vs. direkte Konkurrenten (aus bestehenden Spalten) oder #13
+Restart-Performance (mit Pflicht-De-Bias).
+
+---
+
 ## Memory-Referenzen (für Folge-Sessions)
 
 Die detaillierten Entscheidungen liegen in `C:\Users\morit\.claude\projects\C--Projekte-F1Predictions\memory\`:
