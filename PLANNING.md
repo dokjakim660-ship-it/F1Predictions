@@ -558,6 +558,34 @@ Restart-Performance (mit Pflicht-De-Bias).
 
 ---
 
+## 24. Phase 5.10 — H2H vs. Konkurrenten (Backlog #16, ⚠️ DROPPED, Pace-Redundanz)
+
+**Stand: ✅ EVALUIERT, VERWORFEN 2026-06-02 (Negativ-Resultat).** Backlog-Idee #16: Racecraft isolieren
+über H2H gegen Fahrer derselben Pace-Klasse. Feature `driver_h2h_beat_rate_l20` = pro Rennen Anteil der
+Grid-Nachbarn (±3 Startplätze, klassifizierte Finisher), die der Fahrer im Ziel schlägt; gelaggter
+Rolling-Mean l20 je Fahrer. Grid-Nachbar als „Pace-Klasse" = pre-race bekannt → nicht zirkulär; Beat-
+Outcome = Renn-Result → speist nur das gelaggte Feature. No-Leakage-Guard + Round-Trip grün.
+
+**Verdikt (Holdout, 41 Rennen) — eindeutig negativ + redundant:** **corr(beat_rate, driver_form_finish_l10)
+= −0.71** → das Feature ist zu 71% ein Pace-Proxy (schnelle Fahrer schlagen ihre tieferen Grid-Nachbarn
+leicht), face-validity gemischt (echtes Racecraft-Restsignal bei Albon/Hülkenberg in langsamen Autos, aber
+pace-dominiert: Norris/Verstappen/Piastri oben). Race-Rank: deployt Ridge 3.202→3.212 (+0.010 schlechter)
+UND die **gesamte Regressions-Familie deutlich schlechter** (RegEnsemble 3.328→3.439 +0.111, LGBMReg +0.089,
+XGBReg +0.077) — der schlechteste Race-Rank-Effekt der Session. Brier: Podium −0.0009 (schadet), Teammate
++0.0015 („alles-hilft"-Lauf, mid-pack, Rauschen).
+
+**Entscheidung (Claude-Empfehlung, vom User delegiert): DROP.** 71% redundant mit der schon vorhandenen
+Form; schleppt kollineares Rauschen in die Regressionsmodelle und verschlechtert den deployten race-Ridge
++ die ganze Regressions-Familie. Das schwache Racecraft-Residuum (Albon-Typ) überwiegt die Pace-Redundanz-
+Last nicht. Code byte-identisch zurückgebaut; Negativ-Resultat dokumentiert.
+
+**Lehre (3. Drop-Muster):** Ein Feature, das stark (|corr|>0.7) mit einem bereits vorhandenen Feature
+korreliert, ist meist redundant + schädlich für lineare/Regressionsmodelle — vor dem Bau die Korrelation
+zur bestehenden Form/Pace prüfen, nicht nur Leakage. Reine, gering-korrelierte Skill-Isolatoren (#6, #9,
+Teammate-Gap) bleiben die Gewinner.
+
+---
+
 ## Memory-Referenzen (für Folge-Sessions)
 
 Die detaillierten Entscheidungen liegen in `C:\Users\morit\.claude\projects\C--Projekte-F1Predictions\memory\`:
