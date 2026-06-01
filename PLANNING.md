@@ -494,6 +494,43 @@ post_fp2-Minus) — späteres Refinement (z.B. eigener Quali-Nässe-Split oder Q
 
 ---
 
+## 22. Phase 5.8 — Safety-Car-Strategie (Backlog #11, ⚠️ DROPPED, Floor/Ceiling-Confound)
+
+**Stand: ✅ EVALUIERT, VERWORFEN 2026-06-02 (Negativ-Resultat).** Backlog-Idee #11: profitiert ein Team
+systematisch von SC/VSC-Phasen? Neuer L2-Roh-Signalbau in `process/fastf1._race_sc_position_delta`:
+pro Fahrer das Netto-Klassifizierungs-Positionsdelta quer durch jede Neutralisationsphase (TrackStatus
+4=SC, 6/7=VSC; Rot=5 ausgeschlossen), gemessen letzte grüne Runde *vor* vs. erste grüne Runde *nach* der
+Phase, summiert über die Phasen des Rennens → `race_sc_pos_delta` in `sessions.parquet` (49.7% definiert,
+~zero-sum über das Feld). Feature `team_sc_strategy_l10` = team-kollabierter, .shift(1)-gelaggter
+10-Rennen-Rolling-Mean. SC-Phasen-Erkennung + No-Leakage-Guard (unabhängiger Recompute) gebaut.
+
+**Verdikt — Floor/Ceiling-Confound (zentral, 2. Bestätigung von 5.4):** Face-Validity **invertiert** —
+Sauber +2.6 (oben), Mercedes −1.36 (unten). Ein Führender kann quer durch eine SC kaum Plätze *gewinnen*
+(nur verlieren), ein Hinterbänkler kaum *verlieren*. Das rohe SC-Delta ist damit primär ein invertierter
+Proxy der Pace-Klasse, die das Modell via echte Pace-Features schon hat — genau die Floor/Ceiling-Falle
+aus Phase 5.4. **Ablation (roh):** Brier-Märkte leicht *positiv* (Podium d_ens +0.0011, Teammate +0.0009),
+aber im Rausch-Band (Baseline driftet ~0.001 zwischen Läufen) und aus dem konfundierten Inverted-Pace-
+Proxy. Race-Rank: deployt Ridge flach (3.212→3.214), Regressions-Familie *leicht schlechter*
+(RegEnsemble 3.320→3.352) — also genau die Modelle, die #6 verbesserte, verlieren hier. Quali-Rank leicht
+schlechter. Anders als 5.4-roh (klar schädlich, −0.06…−0.11) nur Rausch-Band-gemischt, weil das SC-Signal
+selten/schwach ist (selbst sein Confound ist schwach).
+
+**Entscheidung (Claude-Empfehlung, vom User bestätigt): DROP.** Konfundiert + Rausch-Band, hilft keinem
+deployten Modell klar. Der saubere Test der Hypothese bräuchte einen 5.4-Stil-De-Bias (per-Periode
+Entry-Position erfassen, Erwartungswert je Position abziehen) — aber der De-Bias-Payoff wäre laut 5.4 nur
+marginal und das Roh-Signal ist bereits auf den deployten Modellen Rausch-Band, also nicht den Umbau wert.
+Code (inkl. L2-SC-Prozessor) vollständig zurückgebaut, Working Tree byte-identisch zu HEAD; nur dieses
+Negativ-Resultat + die De-Bias-Option dokumentiert.
+
+**Lehre (Wiederholung 5.4):** Jedes Maß als Positionsänderung gegen eine begrenzte Zielgröße (Position
+1..N) ist an den Rändern strukturell verzerrt → vor Verwendung de-biasen ODER verwerfen, wenn das
+Roh-Signal ohnehin im Rauschen liegt.
+
+**Nächster Backlog-Einstieg:** #13 Renn-Restart-Performance (ergänzt SC logisch — aber ACHTUNG: gleiche
+Floor/Ceiling-Falle, dort von vornherein de-biasen) oder #9 Form-Momentum (billig, aus bestehenden Spalten).
+
+---
+
 ## Memory-Referenzen (für Folge-Sessions)
 
 Die detaillierten Entscheidungen liegen in `C:\Users\morit\.claude\projects\C--Projekte-F1Predictions\memory\`:
