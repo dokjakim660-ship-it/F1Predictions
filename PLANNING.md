@@ -582,7 +582,40 @@ Last nicht. Code byte-identisch zurückgebaut; Negativ-Resultat dokumentiert.
 **Lehre (3. Drop-Muster):** Ein Feature, das stark (|corr|>0.7) mit einem bereits vorhandenen Feature
 korreliert, ist meist redundant + schädlich für lineare/Regressionsmodelle — vor dem Bau die Korrelation
 zur bestehenden Form/Pace prüfen, nicht nur Leakage. Reine, gering-korrelierte Skill-Isolatoren (#6, #9,
-Teammate-Gap) bleiben die Gewinner.
+Teammate-Gap) bleiben die Gewinner. (Nuance siehe §25: hohe Korrelation ist ein Risiko-Flag, kein
+Auto-Drop — wenn das Signal trotzdem dichter/sauberer ist als das Original, kann es benigne helfen.)
+
+---
+
+## 25. Phase 5.11 — Track-Cluster-Form (Backlog #8, ✅ KEPT)
+
+**Stand: ✅ DONE 2026-06-02 (behalten, knappe Keep-Entscheidung).** Backlog-Idee #8: `driver_track_finish_l3`
+(exakte Strecke) ist ~31% NaN; generalisiere auf den Strecken-CLUSTER. Feature `driver_cluster_finish_l5` =
+gelaggter 5-Rennen-Rolling-Mean der Finish-Position-Proxy über die Vor-Rennen des Fahrers an Strecken
+desselben Clusters. Cluster (`_track_cluster`) = `{street|perm}_{twisty|fast}`, split bei 3 Kurven/km — eine
+statische, interpretierbare Track-Eigenschaft (kein Leakage). Gelaggt per (Fahrer, Cluster). No-Leakage-Guard
+(unabhängiger Recompute inkl. Cluster) + Round-Trip grün.
+
+**Coverage-Gewinn (Kernziel erreicht):** NaN 30.9% (exakt-Track) → **4.8%** (Cluster).
+
+**Verdikt (Holdout, 41 Rennen) — mixed-positiv:** Race-Rank deployt Ridge 3.202→**3.190** (−0.012,
+Session-Bestwert); Quali post_fp2 LGBMReg 3.283→**3.217** (−0.066, Session-Bestwert); aber Quali
+pre_weekend Ridge 3.422→3.441 (+0.019 schlechter), Tree-Regressionen leicht schlechter (RegEnsemble +0.034).
+Brier: Podium −0.0005, Teammate +0.0008 (Rausch). **corr(cluster, driver_form_finish_l5) = 0.798** — über
+der 0.6-Redundanzschwelle.
+
+**Entscheidung (Claude-Empfehlung, vom User delegiert): KEEP.** Trotz 0.798-Korrelation **kein** #16-artiger
+Regressions-Kollaps — die Redundanz ist hier *benigne*: das deployte race-Ridge + post_fp2-Quali bekommen
+ihre Session-Bestwerte, plus der reale Coverage-Fix (31%→5% NaN). Knapper als #6/#9 (pre_weekend-Wobble +
+Podium-Rausch-negativ), aber die deployten Hauptsignale + Coverage überwiegen.
+
+**Nuance zur Korrelations-Checkliste:** |corr|>0.7 ist ein Risiko-Flag, KEIN Auto-Drop. #16 (Beat-Rate,
+corr −0.71) war redundant UND schädlich (Signal war nur ein verrauschter Pace-Proxy). #8 (corr 0.798) ist
+redundant ABER hilfreich, weil es ein dichteres, sauberes Track-Typ-Signal trägt, das die Gesamt-Form
+nicht hat. → Korrelation prüfen, aber die Ablation entscheiden lassen.
+
+**Nächster Backlog-Einstieg:** #7 Driver-ELO (sauberste Fahrer-Isolation, aufwändig) oder #13 Restart MIT
+Pflicht-De-Bias.
 
 ---
 

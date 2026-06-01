@@ -132,6 +132,9 @@ FEATURE_COLUMNS = [
     "track_overtakes_prior_mean",
     # Driver x track history (lagged)
     "driver_track_finish_l3",
+    # Driver form at SIMILAR tracks (same street/permanent x twisty/fast cluster),
+    # a denser fill for the ~30%-NaN exact-track feature (see _add_track_cluster_form).
+    "driver_cluster_finish_l5",
     # Weather at race time (forecast pre-race, archive post-race -- see process/openmeteo)
     "weather_temp_c_race_hour",
     "weather_is_wet_race_hour",
@@ -709,6 +712,45 @@ def _add_driver_track_history(df: pd.DataFrame) -> pd.DataFrame:
     return df.drop(columns=["_pp"])
 
 
+def _track_cluster(df: pd.DataFrame) -> pd.Series:
+    """Static track character class from the curated attributes: surface
+    (street/permanent) x corner density (twisty/fast, split at 3 corners/km).
+
+    Four interpretable buckets group circuits that drive similarly -- the unit a
+    driver's form generalises over when the exact track has no history. Purely a
+    function of track attributes, so it carries no result information / no leakage.
+    Tracks missing attributes fall into perm_fast (the catch-all), harmless and rare.
+    """
+    dense = (df["track_n_corners"] / df["track_length_km"]) >= 3.0
+    surface = np.where(df["track_is_street"] == 1, "street", "perm")
+    shape = np.where(dense.to_numpy(), "twisty", "fast")
+    return pd.Series([f"{s}_{h}" for s, h in zip(surface, shape, strict=True)], index=df.index)
+
+
+def _add_track_cluster_form(df: pd.DataFrame) -> pd.DataFrame:
+    """Lagged driver form at SIMILAR tracks -- the rolling finish-proxy mean over
+    the driver's prior races at circuits in the same character cluster (.shift(1)).
+
+    driver_track_finish_l3 keys on the EXACT circuit and is ~30% NaN: many
+    driver-track pairs have no prior visit (rookies, rotating calendars, a track's
+    debut). Generalising to the track CLUSTER (street/permanent x twisty/fast)
+    multiplies the available history, so the feature is defined for almost every
+    row while still capturing "does this driver go well at this KIND of circuit"
+    (street specialists, low-speed-corner strengths). Must run AFTER
+    _add_track_features (needs track_is_street / corners / length). Lagged per
+    (driver, cluster), so race N never feeds its own feature -- same no-lookahead
+    contract as _add_driver_track_history. NaN only until a driver's first race in
+    a cluster; median-imputed downstream.
+    """
+    df = df.copy()
+    df["_cluster"] = _track_cluster(df)
+    df = df.sort_values(["driver_id", "_cluster", "race_date"]).reset_index(drop=True)
+    df["_pp"] = _pos_proxy(df)
+    g = df.groupby(["driver_id", "_cluster"], sort=False)
+    df["driver_cluster_finish_l5"] = g["_pp"].transform(lambda x: _roll_shift(x, 5))
+    return df.drop(columns=["_pp", "_cluster"])
+
+
 def _add_track_overtaking(df: pd.DataFrame, overtakes: pd.DataFrame) -> pd.DataFrame:
     """Lagged circuit-overtaking index: mean on-track passes in this track's
     PRIOR races (expanding mean, .shift(1) = no lookahead).
@@ -833,6 +875,7 @@ def compute_features(
     df = _add_team_execution_residual(df, sessions)
     df = _add_track_features(df, inv, tracks)
     df = _add_driver_track_history(df)
+    df = _add_track_cluster_form(df)
     df = _add_track_overtaking(df, overtakes)
     df = _add_pit_crew_speed(df, sessions)
     df = _add_start_performance(df, sessions)

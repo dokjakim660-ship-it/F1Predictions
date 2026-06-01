@@ -68,6 +68,7 @@ PIT_CREW_FEATS = ["team_pit_speed_resid_l5"]
 START_FEATS = ["driver_start_pos_gain_l5"]
 WET_SKILL_FEATS = ["driver_wet_skill_delta"]
 MOMENTUM_FEATS = ["driver_form_momentum_l3_l10"]
+CLUSTER_FORM_FEATS = ["driver_cluster_finish_l5"]
 
 
 @dataclass
@@ -113,6 +114,10 @@ def _make_variants() -> list[VariantSpec]:
         ),
         VariantSpec(
             "- form momentum", drop_features=MOMENTUM_FEATS, decay_per_month=DEFAULT_DECAY_PER_MONTH
+        ),
+        VariantSpec(
+            "- track cluster", drop_features=CLUSTER_FORM_FEATS,
+            decay_per_month=DEFAULT_DECAY_PER_MONTH,
         ),
         VariantSpec("- time-decay weights", drop_features=[], decay_per_month=None),
     ]

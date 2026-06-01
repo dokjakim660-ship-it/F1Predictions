@@ -346,6 +346,41 @@ def test_start_performance_is_lagged_per_driver() -> None:
     )
 
 
+def test_track_cluster_form_is_lagged_per_driver_cluster() -> None:
+    """driver_cluster_finish_l5 = lagged rolling finish-proxy mean over the driver's
+    prior races in the same track cluster, re-derived independently.
+
+    Guards:
+      - equals the .shift(1)-lagged 5-race rolling mean of the position proxy within
+        (driver, cluster), the cluster recomputed from the same track attributes
+        (a missing lag would fold race N's own finish into its feature);
+      - structurally NaN on a driver's first race in a cluster.
+    """
+    df = _load_features_or_skip()
+    col = "driver_cluster_finish_l5"
+    assert col in df.columns, f"{col} missing from feature table"
+
+    dense = (df["track_n_corners"] / df["track_length_km"]) >= 3.0
+    surface = df["track_is_street"].eq(1).map({True: "street", False: "perm"})
+    cluster = surface + "_" + dense.map({True: "twisty", False: "fast"})
+
+    work = df[["driver_id", "year", "round", "finish_position", "dnf", col]].copy()
+    work["_cluster"] = cluster.to_numpy()
+    work["_pp"] = work["finish_position"].where(~work["dnf"], _DNF_POSITION_PROXY).astype(float)
+    work = work.sort_values(["driver_id", "_cluster", "year", "round"]).reset_index(drop=True)
+    work["expected"] = work.groupby(["driver_id", "_cluster"], sort=False)["_pp"].transform(
+        lambda x: x.rolling(5, min_periods=1).mean().shift(1)
+    )
+    pd.testing.assert_series_equal(
+        work[col].reset_index(drop=True),
+        work["expected"].reset_index(drop=True),
+        check_names=False,
+    )
+
+    first_in_cluster = work.groupby(["driver_id", "_cluster"], sort=False).head(1)
+    assert first_in_cluster[col].isna().all()
+
+
 def test_form_momentum_is_lagged_per_driver() -> None:
     """driver_form_momentum_l3_l10 = driver_form_finish_l10 minus the lagged
     3-race finish-proxy mean, re-derived independently.
