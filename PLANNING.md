@@ -395,6 +395,20 @@ Vorhersage der vier **Qualifying-Märkte** (`pole`, `top3_quali`, `top10_quali`,
 
 ---
 
+## 18. Phase 5.4 — Team-Execution-Residual (Strategie-/Umsetzungs-Güte)
+
+**Stand: ✅ DONE 2026-06-01.** User-Idee: „Teams mit historisch besseren Strategien einen besseren Score geben — gucken wie Pace und Ergebnis waren, ob man schlechter war als man sein sollte." Lücke: die bestehenden Team-Features sagen *wo* ein Team landet (`team_form_finish_l5`), aber keines, ob das **besser/schlechter als die Pace hergab** war.
+
+**Feature — `team_exec_residual_l5` / `_l10` in `build.py` (`_add_team_execution_residual`):** Pro Vor-Rennen Finisher nach echter Renn-Pace (`race_clean_median_lap_ms`, grüne Runden ohne Pit/SC — bereits in `sessions.parquet`, sonst Leakage) ranken, `residual = pace_rank − finish_position`. Positiv = besser umgesetzt als die Pace verdiente (Pit-Wall/Box-Crew/Start). Pro Constructor beide Autos kollabiert, gelaggter Rolling-Mean L5/L10, `.shift(1)` = leakage-sicher (wie `_add_team_form`). DNFs ausgeschlossen (= Zuverlässigkeit, steckt schon in `team_form_dnf_rate_l10`). Kein neues Artefakt — inline aus Sessions.
+
+**Floor/Ceiling-Falle (zentrale Lehre):** Roh war das Maß **schädlich** (Race-Rank Ensemble −0.060, Ranker −0.111) und die Team-Rangliste unsinnig (Spitzenteams Red Bull/McLaren *negativ*, Hinterbänkler Sauber/Williams *positiv*). Grund: Ein Pace-Führer kann nicht besser als P1 finishen → Residual nach oben gedeckelt; ein Hinterbänkler kann nur Plätze gewinnen → nach unten gedeckelt. Das rohe Residual ist damit ein **invertierter Proxy der Pace-Klasse**, die das Modell schon kennt. **Fix:** pro Pace-Rang den Erwartungswert abziehen (`_resid_raw − mean(_resid_raw | pace_rank)`) → übrig bleibt die team-spezifische Abweichung. Danach plausible Rangfolge (Ferrari/Mercedes oben, Haas/AlphaTauri unten).
+
+**Verdikt (Ablation + Rank-A/B, detrended):** Marginal, nicht signifikant, aber für die **produktiv genutzten Rank-Modelle leicht positiv**: Ridge (Race-Default) Position-MAE +0.010, LambdaMART-Ranker +0.024/+0.031; nur die Tree-Regressionen verlieren (−0.04, nicht Default). Brier-Targets neutral (Podium −0.0002, Teammate −0.0010). **Entscheidung (User): global behalten (Option 1)**, analog Overtaking. Neuer Guard in `tests/test_no_leakage.py` rechnet jeden Wert (inkl. Detrend) unabhängig nach; `- team execution`-Variante in `ablation.py`.
+
+**Lehre:** Gute Domänen-Intuition ≠ gutes Maß. Ein Residual gegen eine **begrenzte** Zielgröße (Position 1..N) ist an den Rändern strukturell verzerrt — vor der Verwendung de-biasen.
+
+---
+
 ## Memory-Referenzen (für Folge-Sessions)
 
 Die detaillierten Entscheidungen liegen in `C:\Users\morit\.claude\projects\C--Projekte-F1Predictions\memory\`:

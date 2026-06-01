@@ -177,6 +177,65 @@ def test_track_overtaking_index_is_lagged_circuit_level() -> None:
     )
 
 
+def test_team_execution_residual_is_lagged_and_team_level() -> None:
+    """team_exec_residual_l5/l10 = pace-rank minus finish, averaged over the
+    constructor's STRICTLY-PRIOR races.
+
+    Guards the three traps:
+      - per-constructor, not per-car: both team-mates share the value;
+      - independently re-derived from race pace (sessions) + finish (features)
+        equals the stored value -- which is only true if the rolling mean is
+        .shift(1)-lagged (folding race N's own result in would break it);
+      - DNF rows never contribute their own residual.
+    """
+    df = _load_features_or_skip()
+    cols = ["team_exec_residual_l5", "team_exec_residual_l10"]
+    for col in cols:
+        assert col in df.columns, f"{col} missing from feature table"
+
+    # Per-constructor, not per-car: constant across both cars in a (team, race).
+    per_team_race = df.groupby(["race_id", "constructor_id"])[cols].nunique(dropna=False)
+    assert not per_team_race[per_team_race.gt(1).any(axis=1)].shape[0], (
+        f"{cols} vary between team-mates -- residual keyed on the driver, not the team"
+    )
+
+    # Independent re-derivation from race pace + finishing position.
+    sessions = _load_or_skip(SESSIONS_PARQUET)[["race_id", "driver_id", "race_clean_median_lap_ms"]]
+    base = df[["race_id", "driver_id", "constructor_id", "race_date", "finish_position", "dnf"]].merge(
+        sessions, on=["race_id", "driver_id"], how="left"
+    )
+    fin = base[(~base["dnf"].astype(bool)) & base["race_clean_median_lap_ms"].notna()].copy()
+    fin["_rank"] = fin.groupby("race_id", sort=False)["race_clean_median_lap_ms"].rank(method="first")
+    fin["_resid_raw"] = fin["_rank"] - fin["finish_position"].astype(float)
+    # Match the production floor/ceiling debias: subtract the per-pace-rank mean.
+    fin["_resid"] = fin["_resid_raw"] - fin.groupby("_rank")["_resid_raw"].transform("mean")
+    resid = fin.groupby(["constructor_id", "race_id"], as_index=False)["_resid"].mean()
+
+    per_race = (
+        df[["constructor_id", "race_id", "race_date"]]
+        .drop_duplicates()
+        .merge(resid, on=["constructor_id", "race_id"], how="left")
+        .sort_values(["constructor_id", "race_date"])
+        .reset_index(drop=True)
+    )
+    grp = per_race.groupby("constructor_id", sort=False)["_resid"]
+    for col, window in (("team_exec_residual_l5", 5), ("team_exec_residual_l10", 10)):
+        per_race[f"exp_{col}"] = grp.transform(
+            lambda x, w=window: x.rolling(window=w, min_periods=1).mean().shift(1)
+        )
+        got = df[["race_id", "constructor_id", col]].drop_duplicates(["race_id", "constructor_id"])
+        merged = got.merge(
+            per_race[["race_id", "constructor_id", f"exp_{col}"]],
+            on=["race_id", "constructor_id"],
+            how="left",
+        )
+        pd.testing.assert_series_equal(
+            merged[col].reset_index(drop=True),
+            merged[f"exp_{col}"].reset_index(drop=True),
+            check_names=False,
+        )
+
+
 def test_team_features_follow_team_not_driver_after_switch() -> None:
     """team_form_* is keyed on the constructor, not the driver.
 

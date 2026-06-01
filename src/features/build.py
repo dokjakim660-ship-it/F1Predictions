@@ -105,6 +105,10 @@ FEATURE_COLUMNS = [
     # Constructor standings entering this race (lagged within-season cumsum)
     "team_season_points_pre_race",
     "team_season_pos_pre_race",
+    # Constructor execution residual: race finish vs race-pace rank, averaged
+    # over prior races (lagged, no-lookahead -- see _add_team_execution_residual).
+    "team_exec_residual_l5",
+    "team_exec_residual_l10",
     # Track attributes
     "track_length_km",
     "track_n_corners",
@@ -479,6 +483,77 @@ def _add_team_standings(df: pd.DataFrame) -> pd.DataFrame:
     return df.merge(per_race[out_cols], on=["year", "constructor_id", "race_id"], how="left")
 
 
+def _add_team_execution_residual(df: pd.DataFrame, sessions: pd.DataFrame) -> pd.DataFrame:
+    """Lagged team execution residual: did the constructor finish AHEAD of or
+    BEHIND where its race PACE put it, averaged over prior races (.shift(1)).
+
+    Per past race we rank the finishers by clean race-lap pace
+    (race_clean_median_lap_ms, ascending = faster) and subtract the actual
+    finishing position:  residual = pace_rank - finish_position.  Positive means
+    the car turned its pace into a better result than peers of similar pace --
+    the persistent part of that (pit-wall calls, pit-crew speed, starts) is
+    "execution / strategy quality"; the noisy part (a lucky safety car) averages
+    out across the rolling window, which is exactly why we roll instead of using
+    a single race.
+
+    Race pace and finishing position are both current-race RESULTS, so the
+    residual can only feed a .shift(1)-lagged per-constructor rolling mean, never
+    its own race -- the same no-lookahead contract as _add_team_form. Both cars
+    are collapsed to one residual per (constructor, race) so a weekend counts
+    once, not twice, in the window.
+
+    DNFs are excluded: a retirement is reliability, not strategy (already carried
+    by team_form_dnf_rate_l10). Pace rank and finish position are both taken over
+    finishers only, so the two run 1..k over the same field and the difference is
+    a "places gained vs pace" in race-position units.
+
+    Floor/ceiling debias: the raw residual (pace_rank - finish) is structurally
+    biased by pace tier -- a pace-leading car cannot finish better than P1 so its
+    residual is capped above, while a backmarker can only gain places. Left raw,
+    the feature becomes an inverted proxy of car pace (which the model already
+    has) and HURTS the rank model. We therefore subtract the mean residual at each
+    pace rank, leaving only the team's deviation from what a car of that pace tier
+    typically achieves -- the actual execution signal. The per-rank mean is a
+    structural normalisation constant (a population statistic, not a per-team
+    outcome); the team's own race never feeds its own feature -- the .shift(1)
+    lag below still guarantees that.
+    """
+    pace_col = "race_clean_median_lap_ms"
+    if pace_col not in sessions.columns:
+        df["team_exec_residual_l5"] = np.nan
+        df["team_exec_residual_l10"] = np.nan
+        return df
+
+    base = df[["race_id", "driver_id", "constructor_id", "race_date", "finish_position", "dnf"]].merge(
+        sessions[["race_id", "driver_id", pace_col]], on=["race_id", "driver_id"], how="left"
+    )
+    finishers = base[(~base["dnf"].astype(bool)) & base[pace_col].notna()].copy()
+    finishers["_pace_rank"] = finishers.groupby("race_id", sort=False)[pace_col].rank(method="first")
+    finishers["_resid_raw"] = finishers["_pace_rank"] - finishers["finish_position"].astype(float)
+    rank_mean = finishers.groupby("_pace_rank")["_resid_raw"].transform("mean")
+    finishers["_resid"] = finishers["_resid_raw"] - rank_mean
+
+    resid = finishers.groupby(["constructor_id", "race_id"], as_index=False)["_resid"].mean()
+    # One row per (constructor, race) the team actually entered -- left-join the
+    # residual so both-cars-DNF races stay in the sequence as NaN (skipped by the
+    # rolling mean) instead of silently shortening the window.
+    per_race = (
+        df[["constructor_id", "race_id", "race_date"]]
+        .drop_duplicates()
+        .merge(resid, on=["constructor_id", "race_id"], how="left")
+        .sort_values(["constructor_id", "race_date"])
+        .reset_index(drop=True)
+    )
+    g = per_race.groupby("constructor_id", sort=False)
+    per_race["team_exec_residual_l5"] = g["_resid"].transform(lambda x: _roll_shift(x, 5))
+    per_race["team_exec_residual_l10"] = g["_resid"].transform(lambda x: _roll_shift(x, 10))
+    return df.merge(
+        per_race[["constructor_id", "race_id", "team_exec_residual_l5", "team_exec_residual_l10"]],
+        on=["constructor_id", "race_id"],
+        how="left",
+    )
+
+
 def _add_track_features(df: pd.DataFrame, inv: pd.DataFrame, tracks: pd.DataFrame) -> pd.DataFrame:
     circuits = inv[["race_id", "circuit_id"]].drop_duplicates()
     df = df.merge(circuits, on="race_id", how="left")
@@ -586,6 +661,7 @@ def compute_features(
     df = _add_driver_form(df)
     df = _add_team_form(df)
     df = _add_team_standings(df)
+    df = _add_team_execution_residual(df, sessions)
     df = _add_track_features(df, inv, tracks)
     df = _add_driver_track_history(df)
     df = _add_track_overtaking(df, overtakes)
