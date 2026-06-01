@@ -436,6 +436,34 @@ Vorhersage der vier **Qualifying-Märkte** (`pole`, `top3_quali`, `top10_quali`,
 
 ---
 
+## 20. Phase 5.6 — Constructor-Saison-Trajektorie (Backlog #10, ⚠️ DROPPED)
+
+**Stand: ✅ EVALUIERT, VERWORFEN 2026-06-01 (Negativ-Resultat).** Backlog-Idee #10: ist ein
+Team über die laufende Saison auf- oder absteigend? Feature `team_season_pos_traj_l3` =
+`team_season_pos_pre_race[vor 3 Rennen] − [dieses Rennen]` je (Jahr, Constructor), positiv =
+WCC-Plätze gewonnen. Billigste denkbare Variante: rein aus dem bereits gelaggten Standings-Feld
+abgeleitet (kein neues Artefakt), leakage-sicher per Konstruktion (beide Terme sind Pre-Race-Stände).
+20.5% NaN (erste 3 Saisonrunden). No-Leakage-Guard (unabhängiger Recompute + Team-Level) + Round-Trip
+grün.
+
+**Verdikt (Holdout, 41 Rennen):** Hilft **keinem deployten Modell**. Race-Rank: deployt Ridge
+3.221→3.231 (schlechter), nur nicht-deployte XGBReg/RegEnsemble besser (3.449→3.345, 3.434→3.364).
+Podium-Ensemble (primärer Wettmarkt) `d_ens −0.0010` (leicht schädlich, LogReg −0.0013); Teammate
+neutral (+0.0001); Quali-Rank pre_weekend Ridge minimal besser (+0.005), post_fp2 gemischt. Dieselbe
+marginal-nicht-signifikante Signatur wie Overtaking (5.3) / Team-Execution (5.4) — **aber schwächer**:
+jene halfen ihren deployten Rank-Modellen, diese nicht.
+
+**Entscheidung (Claude, vom User delegiert „was uns am meisten bringt"): DROP.** Der
+Omitted-Variable-Keep aus 5.5 galt für *neutrale* Features (pit_crew/start neutral auf Brier);
+die Trajektorie ist netto leicht negativ auf dem deployten/primären Pfad. Die einzigen Gewinne liegen
+auf nicht-deployten Modellen — die zu verfolgen ist die Overfitting-Falle (Lehre 3.7). Code vollständig
+zurückgebaut (Working Tree byte-identisch zu HEAD); nur dieses Negativ-Resultat dokumentiert, damit die
+Idee nicht erneut gebaut wird. Bei deutlich größerem Holdout neu erwägbar.
+
+**Nächster Backlog-Einstieg:** #6 Nässe-Skill-Delta (klar abgrenzbares Signal, Daten liegen).
+
+---
+
 ## Memory-Referenzen (für Folge-Sessions)
 
 Die detaillierten Entscheidungen liegen in `C:\Users\morit\.claude\projects\C--Projekte-F1Predictions\memory\`:
