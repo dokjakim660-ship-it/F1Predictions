@@ -649,6 +649,55 @@ Fingerprint-Check) — beide tragen potenziell eine neue Dimension (Strategie-/A
 
 ---
 
+## 27. Phase 5.13 — Top-Speed-Profil (Backlog #5, ⚠️ DROPPED, neue Dimension aber kein deployter Gewinn)
+
+**Stand: ✅ EVALUIERT, VERWORFEN 2026-06-02 (Negativ-Resultat).** Backlog-Idee #5: Auto-Charakter
+(Motor-Power vs. Drag-Trim) aus der Geraden-Geschwindigkeit. Neuer L2-Wert `race_top_speed_kph` in
+`fastf1.py._race_pace_rows` = p95 von `SpeedST` (Speed-Trap auf längster Gerade) je Fahrer im Rennen
+(p95 statt max = robust gegen einzelne Windschatten-Runden). Feature `team_top_speed_resid_l5` in
+`build.py._add_top_speed_profile` = within-race-relativ (minus Renn-Median, entfernt die Strecke — Monza
+≫ Monaco), pro Constructor kollabiert (Motor+Aero geteilt), .shift(1)-gelaggter 5-Rennen-Rolling-Mean
+(Top-Speed ist Renn-Result → wie `team_pit_speed_resid_l5`). No-Leakage-Guard (unabhängiger Recompute) +
+Round-Trip grün.
+
+**Bestes Profil auf dem Papier aller getesteten Features:** **corr ~0** mit Form/Pace (|corr| < 0.04 zu
+finish_l10/l5, team_form, q_gap, grid) — die sauberste Entkopplung überhaupt, echte neue Dimension, nicht
+bounded (kein Floor/Ceiling), NaN nur 1.0% (Constructor-Cold-Start, überwiegend 2018 + neue Teams; mildes
+Target-Delta race_rank 11.8 vs 10.5 strukturell durch Cold-Start, KEIN Auto-Fingerprint wie Tyre-Deg).
+Face-Validity ein **Charakter-Achse, kein Qualitäts-Proxy:** Williams/Haas (Low-Downforce, schnell auf
+Geraden) oben, McLaren/Red Bull (High-Downforce-Kurvenautos) unten — exakt wie 2024/25 real.
+
+**Verdikt (Holdout, 41 Rennen) — kein deployter Gewinn, post_fp2-Schaden:**
+- **race Ridge (Flaggschiff): 3.190 → 3.190 exakt neutral.** Ridge ist linear; Top-Speed-Charakter ist
+  im Mittel weder gut noch schlecht (Haupteffekt ~0), das Signal steckt nur in der **Track-Interaktion**
+  (Low-Drag-Auto relativ gut auf Power-Strecken, schlecht in Monaco) — die ein lineares Modell nicht
+  abbilden kann. Nicht-deployte race-Bäume gemischt: LGBMReg 3.412→3.381 (−0.031), RegEnsemble −0.013,
+  XGBReg 3.410→3.432 (+0.022 schlechter).
+- **quali post_fp2 LGBMReg (deployt): 3.217 → 3.332 (+0.115 deutlich schlechter)** — race-abgeleitetes
+  Feature im Quali-Set fehlplatziert; reproduzierbar (Rank-Eval deterministisch), kein Run-Rauschen.
+- quali pre_weekend Ridge 3.441→3.429 (−0.012, marginal).
+- Brier: Podium d_ens +0.0005, Teammate −0.0009 — beides Rausch-Band (in diesem Lauf fast alle Features so).
+
+**Entscheidung (Claude-Empfehlung, vom User delegiert): DROP.** Hilft KEINEM deployten Modell (race-Ridge
+exakt neutral), schadet dem deployten post_fp2-Quali, Gewinne nur auf nicht-deployten race-Bäumen — exakt
+die Overfitting-Falle (Lehre 3.7, Drop-Grund bei #10). Code (inkl. L2-`race_top_speed_kph`) byte-identisch
+zurückgebaut, mvp/sessions.parquet neu gebaut = HEAD.
+
+**Lehre (zentral, neu):** Saubere Entkopplung (neue Dimension, corr~0) ist **notwendig, aber nicht
+hinreichend.** Wenn der prädiktive Gehalt eines Features eine **Interaktion** braucht, die das deployte
+(lineare) Modell nicht darstellen kann UND die Bäume bei N≈2700 nicht zuverlässig extrahieren, bleibt es
+neutral-bis-schädlich — egal wie sauber die Dimension ist. Die Gewinner (#6 Wet-Skill, #9 Momentum, #8
+Cluster) trugen alle einen nutzbaren **Haupteffekt** (besser/schlechter finishen), keine reine Interaktion.
+**Mögliches künftiges Refinement:** explizites Interaktions-Feature (`top_speed_resid × track_straightness`
+bzw. `× n_drs_zones`), das den Charakter für die linearen Modelle als Haupteffekt verfügbar macht — aber
+durch dieselbe Small-N-Noise begrenzt.
+
+**Nächster Backlog-Einstieg:** #13 Restart MIT Pflicht-De-Bias oder #14 FP2-Longrun-Teammate-Gap
+(Race-Pace-Analog zum behaltenen Quali-Teammate-Gap 5.5, trägt sauberen Haupteffekt — besseres Profil als
+ein reines Interaktions-Feature).
+
+---
+
 ## Memory-Referenzen (für Folge-Sessions)
 
 Die detaillierten Entscheidungen liegen in `C:\Users\morit\.claude\projects\C--Projekte-F1Predictions\memory\`:
