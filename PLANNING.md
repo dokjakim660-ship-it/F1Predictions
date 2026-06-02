@@ -698,6 +698,52 @@ ein reines Interaktions-Feature).
 
 ---
 
+## 28. Phase 5.14 — FP2-Longrun-Teammate-Gap (Backlog #14, ⚠️ DROPPED, hilft nur pre_weekend)
+
+**Stand: ✅ EVALUIERT, VERWORFEN 2026-06-02 (Negativ-Resultat).** Backlog-Idee #14: Race-Pace-Analog zum
+behaltenen Quali-Teammate-Gap (5.5) — Fahrer-Sonntags-Pace vom Auto isoliert. Feature
+`driver_teammate_fp2_pace_gap_l5` in `build.py._add_fp2_teammate_pace_gap` = pro Rennen die ms-Differenz der
+FP2-Longrun-Pace (`fp2_long_run_gap_ms`) zum Teamkollegen (nur 2-Auto-Constructor, beide mit gültigem
+Longrun ~66% der Zeilen), .shift(1)-gelaggter 5-Rennen-Rolling-Mean je Fahrer, negativ = schneller als
+Garagenseite. Kein neues L2-Artefakt. No-Leakage-Guard (unabhängiger Recompute + Antisymmetrie) + Round-Trip
+grün.
+
+**Artefakt-Tail-Falle (wichtige Lehre):** Der Roh-Gap hatte std 3.3s und einen ~6%-Tail bis ±40s/Runde —
+**Compound-Confound:** der Longrun-Picker (`_fp2_rows`) wählt den längsten Stint OHNE Compound-Matching, also
+vergleicht er teils Hard- vs. Soft-Longruns = Reifenwahl, nicht Fahrer-Skill. Anders als der Quali-Gap
+(Single-Lap, gleicher Soft, ~3.6s-bound) ist der Longrun-Gap strukturell kontaminiert. Fix: |Gap| > 3000ms
+auf NaN (nicht-vergleichbare Longruns), behält 94% der validen Vergleiche; danach physikalisch plausible
+Range ±2.84s. Face-Validity konsistent (Teamkollegen spiegeln: Bottas −2.1s / Zhou +2.5s). corr ~0 mit
+Form/Pace (saubere neue Dimension), NaN 2.1%.
+
+**Verdikt (Holdout, 41 Rennen) — neutral auf Brier, schadet deployten race+post_fp2, hilft nur pre_weekend:**
+- **race Ridge (Flaggschiff): 3.190 → 3.231 (+0.041 schlechter)** — schlechtester race-Ridge-Hit der Session.
+- **quali post_fp2 (deployt LGBMReg): 3.217 → 3.351 (+0.134); bester post_fp2 jetzt RegEnsemble 3.293 (+0.076).**
+- **quali pre_weekend Ridge (deployt): 3.441 → 3.388 (−0.053, jetzt signifikant vs Baseline)** — einziger Gewinn.
+- Brier: Podium d_ens +0.0000 (exakt neutral), Teammate +0.0001 (Rausch).
+
+**Mechanismus (lehrreich):** Das Signal ist echt, aber konzentriert auf das **datenarme pre_weekend-Regime**
+(nur Historie verfügbar → Fahrer-Skill-Delta zählt). Wo das Modell schon die AKTUELLE Pace dieses Rennens hat
+(race: echtes Grid+Quali+FP2; post_fp2: FP2), ist die gelaggte Teammate-Pace redundant + varianzerhöhend und
+verschlechtert genau das deployte race-Ridge.
+
+**Entscheidung (Claude-Empfehlung, vom User delegiert): DROP.** Verschlechtert das Flaggschiff-race-Ridge
+(+0.041) — exakt der Disqualifikator von #7 (+0.036) / #16 (+0.010); **kein behaltenes Feature (#6/#8/#9) hat
+je das race-Ridge verschlechtert.** Neutral auf beiden Brier-Märkten. Der einzelne pre_weekend-Gewinn wiegt
+das Schaden an zwei anderen deployten Modellen nicht auf. Code byte-identisch zurückgebaut, mvp.parquet = HEAD.
+
+**Refinement-Idee (nicht gebaut, Per-Set-Surgery bewusst gemieden):** Ein **pre_weekend-quali-only**-Feature
+(aus race/post_fp2-Sets ausgeschlossen) würde den −0.053-Gewinn isolieren ohne den race-Schaden — aber per-Set-
+Selektion auf Holdout-Deltas ist die Overfitting-Falle (3.7); zudem ist offen, ob die pre_weekend-BINÄR-Märkte
+(pole/top3/top10, die echten Wetten) auch profitieren oder nur der Rank. Bei größerem Holdout neu erwägbar.
+
+**Lehre (ergänzt 5.13):** Ein sauberer Haupteffekt (corr~0, neue Dimension) ist auch dann nicht genug, wenn
+sein Informationsgehalt von reicheren AKTUELL-Features (current-race Pace) bereits abgedeckt wird — dann fügt
+er den informationsreichen deployten Modellen nur Varianz hinzu. Gewinner tragen Information, die kein anderes
+Feature trägt UND die im deployten Kontext nicht schon vorhanden ist.
+
+---
+
 ## Memory-Referenzen (für Folge-Sessions)
 
 Die detaillierten Entscheidungen liegen in `C:\Users\morit\.claude\projects\C--Projekte-F1Predictions\memory\`:
