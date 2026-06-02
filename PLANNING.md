@@ -781,6 +781,38 @@ niedriger-EV und mit hoher Wahrscheinlichkeit ebenfalls Drops.
 
 ---
 
+## 30. Phase 5.16 — Restart-Performance (Backlog #13, ⚠️ DROPPED, NaN-Fingerprint-Leak)
+
+**Stand: ✅ EVALUIERT, VERWORFEN 2026-06-02 (Leak gefangen).** Backlog-Idee #13: Plätze gewonnen/verloren über
+SC/VSC-Restarts. Neuer L2-Bau in `fastf1.py._race_pace_rows`: pro Restart (erster grüner Lap nach
+neutralisierter Phase, TrackStatus enthält 4/6/7) `entry_pos − exit_pos`, gemittelt → `race_restart_gain_mean`
++ `race_restart_entry_mean`. Feature `driver_restart_gain_l5` = floor/ceiling-de-biast nach Entry-Position
+(expanding().shift(1) pro Entry-Bucket, wie 5.4) + .shift(1)-gelaggter Rolling-Mean je Fahrer. No-Leakage-Guard
++ Round-Trip grün.
+
+**Scheinbar spektakulär — aber NaN-Fingerprint-Leak:** Race-Rank Tree-Modelle explodierten: RegEnsemble
+3.362 → **2.994** (−0.368), XGBReg −0.392, LGBMReg −0.355; RegEnsemble schlägt GridOrder erstmals signifikant.
+ABER: **race Ridge unverändert (3.190 → 3.192)**, Quali-Rank nur marginal, Podium-Brier neutral (d_ens +0.0006).
+Die Signatur aus der Tyre-Deg-Lehre: spektakulär nur bei Bäumen + nur ein Target + 37.6% NaN, die **stark per
+Jahr variiert** (2024: 55%, 2022: 18%) und mit dem Ziel korreliert (race_rank NaN 11.98 vs present 9.64).
+
+**Permutation-Test (entscheidend, Memory-Routine):** Nur die Nicht-NaN-WERTE gemischt, NaN-Maske fix gelassen →
+der Tree-Gewinn **überlebt fast vollständig** (RegEnsemble 2.994 → 3.028; LGBMReg sogar 3.013). Der Gewinn kommt
+also aus der **NaN-MASKE**, nicht den Werten: die Bäume splitten auf „ist restart_gain NaN?" = Cold-Start/
+Backmarker/Era-Indikator (NaN → tieferer Rang), nicht auf Restart-Skill. Ridge (median-imputiert, keine NaN) ist
+immun → kein Gewinn. Reines Auto-Identitäts-/Erfahrungs-Memorieren über die Missingness, identisch zur
+Tyre-Deg-Falle (5.5).
+
+**Entscheidung (Claude, vom User delegiert): DROP (Leak).** Code (inkl. L2-Restart-Detektion) byte-identisch
+zurückgebaut. **Die Fingerprint-Routine hat genau das gefangen, wofür sie existiert** — ohne den Permutationstest
+hätte RegEnsemble 3.36→2.99 (GridOrder signifikant geschlagen!) wie der beste Keep der Session ausgesehen.
+
+**Lehre (Bestätigung Tyre-Deg 5.5):** Ein hoch-NaN-Feature (>30%), dessen Missingness mit Era/Grid/Erfahrung
+korreliert, ist für NaN-native Tree-Modelle ein Identitäts-Fingerprint. Pflicht-Check bei spektakulärem
+Tree-only-Gewinn: Werte mischen, NaN-Maske fix — überlebt der Gewinn, ist es die Maske, nicht das Signal.
+
+---
+
 ## Memory-Referenzen (für Folge-Sessions)
 
 Die detaillierten Entscheidungen liegen in `C:\Users\morit\.claude\projects\C--Projekte-F1Predictions\memory\`:
