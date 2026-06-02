@@ -269,6 +269,22 @@ app:
 deploy-hf HF_PATH:
     uv run python scripts/sync_to_hf.py {{HF_PATH}}
 
+# One-shot redeploy: rebuild the feature table, regenerate every model-dependent
+# artifact on the CURRENT feature set (holdout backtest + feature importance +
+# reliability plots, podium + teammate), then sync the deployable subset into the
+# HF Space clone. Use this to push "the latest model" to HF after feature/model
+# changes. Run `just build-l2` first if you changed an L2 processor (sessions etc.).
+# Does NOT regenerate the event-specific Next Race pages (use predict-next /
+# predict-pre-quali / predict-rank / predict-dnf YEAR ROUND for a given weekend),
+# and does NOT push -- sanity-check `git status` in the clone, then commit + push.
+redeploy HF_PATH: build
+    uv run python -m src.models.final_eval run --target podium
+    uv run python -m src.models.final_eval run --target teammate
+    uv run python -m src.eval.importance run --target podium
+    uv run python -m src.eval.importance run --target teammate
+    uv run python scripts/sync_to_hf.py {{HF_PATH}}
+    @echo "[redeploy] staged in {{HF_PATH}}. Next: cd {{HF_PATH}}; git add -A; git commit; git push"
+
 # --- Phase 1 placeholders (filled later) ---
 
 train:
