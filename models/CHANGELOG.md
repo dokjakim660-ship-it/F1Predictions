@@ -29,6 +29,14 @@ Format: `YYYY-MM-DD  <model_name>  <git_sha>  Brier=X  ECE=X  Notes`
 | 2026-05-24 | LightGBM | 1cb39ed | 0.0624 | 0.0240 | Phase 1.4 — rich features (podium), walk-forward+Optuna (raw probs) |
 | 2026-05-24 | Ensemble | 1cb39ed | 0.0625 | 0.0279 | Phase 1.4 — rich features (podium), walk-forward+Optuna (raw probs) |
 | 2026-06-01 | TeamReliability (DNF) | 44c940d | 0.1155 | 0.0057 | Phase 5.2 — DNF; nothing beats it (best LogReg 0.1149, CI straddles 0); ConstantRate 0.1158 level; default deployed |
+| 2026-06-02 | LogisticRegression | f743c19 | 0.0658 | 0.0267 | Phase 1.4 — rich features (podium), walk-forward+Optuna (raw probs) |
+| 2026-06-02 | XGBoost | f743c19 | 0.0634 | 0.0244 | Phase 1.4 — rich features (podium), walk-forward+Optuna (raw probs) |
+| 2026-06-02 | LightGBM | f743c19 | 0.0624 | 0.0236 | Phase 1.4 — rich features (podium), walk-forward+Optuna (raw probs) |
+| 2026-06-02 | Ensemble | f743c19 | 0.0626 | 0.0259 | Phase 1.4 — rich features (podium), walk-forward+Optuna (raw probs) |
+| 2026-06-02 | LogisticRegression | f743c19 | 0.1956 | 0.0305 | Phase 1.4 — rich features (teammate), walk-forward+Optuna (raw probs) |
+| 2026-06-02 | XGBoost | f743c19 | 0.2004 | 0.0280 | Phase 1.4 — rich features (teammate), walk-forward+Optuna (raw probs) |
+| 2026-06-02 | LightGBM | f743c19 | 0.2002 | 0.0296 | Phase 1.4 — rich features (teammate), walk-forward+Optuna (raw probs) |
+| 2026-06-02 | Ensemble | f743c19 | 0.2000 | 0.0255 | Phase 1.4 — rich features (teammate), walk-forward+Optuna (raw probs) |
 
 ### Phase 5.2 DNF sub-model — 2026-06-01 (negative result)
 
