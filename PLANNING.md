@@ -813,6 +813,36 @@ Tree-only-Gewinn: Werte mischen, NaN-Maske fix — überlebt der Gewinn, ist es 
 
 ---
 
+## 31. Phase 5.17 — Feature-Jagd abgeschlossen (Backlog erschöpft)
+
+**Stand: ✅ 2026-06-02 (User-Entscheidung, Liste geschlossen).** Nach dem Sättigungs-Befund (§29) und drei
+weiteren Drops (5.13–5.16, davon ein gefangener Leak) wurden die letzten Backlog-Kandidaten bewertet und ohne
+Bau verworfen — keiner überwindet die Sättigung, alle bei hohem Aufwand / strukturellem Risiko:
+
+- **#12 Undercut/Overcut-Erfolgsrate** — NICHT gebaut. Trägt dieselben Pathologien, die #13 versenkten:
+  sporadisches Event (Pit-Duelle nur in manchen Rennen) → hohe, era-variable NaN → NaN-Fingerprint-Falle für
+  Bäume; bounded Positions-Outcome → floor/ceiling; **redundant mit dem behaltenen `team_exec_residual`**
+  (dessen Docstring Pit-Wall-Calls/Strategie bereits abdeckt) + `team_pit_speed_resid`. Höchster Build-Aufwand
+  (Lap-by-Lap-Paarung). Erwartungswert ≈ Drop bei Mehrstunden-Kosten → übersprungen.
+- **#17 Mechanische vs. Crash-DNFs** — NICHT gebaut. Speist nur das nicht-deployte DNF-Modell, das gegen die
+  TeamReliability-Baseline schon unschlagbar war (5.2); `team_form_dnf_rate_l10` existiert bereits.
+- **#18 FP1/FP3-Pace** — NICHT gebaut. Verrauschter als die schon genutzte FP2-Longrun-Pace (Sandbagging,
+  Programm-Variation) + zusätzliche High-NaN-Spalten (Fingerprint-Risiko). Backlog selbst: „geringer Mehrwert".
+- **#19 Altitude** — NICHT gebaut. Steckt großteils in `track_id` (one-hot lernt Strecken-Effekte ohnehin);
+  nur ~5 Höhen-Rennen. Evtl. später als ein statisches Track-Attribut fürs 2026-Motoren-Reglement.
+- **#20 Buchmacher-Quoten** — kein Feature (Benchmark fürs „Tipico schlagen"-Ziel; als Feature zirkulär).
+
+**Bilanz Feature-Hunt (Phase 5):** 13 Zusatz-Features evaluiert → **6 behalten** (Überhol-Index 5.3,
+Team-Execution 5.4, Teammate-Quali+Pit-Crew+Start 5.5, Nässe-Skill 5.7, Form-Momentum 5.9, Track-Cluster 5.11),
+**7 verworfen** (5.6/5.8/5.10/5.12/5.13/5.14/5.15) + 5.16 Leak + 5.2 DNF-Negativ. Finaler Modell-Input:
+**52 numerische + `track_id`** — vollständig dokumentiert in `FEATURES.md`.
+
+**Nächste sinnvolle Hebel (nicht Feature-Engineering):** Live-ROI-Loop ab Monaco 2026-06-07 (echte Datenpunkte),
+mehr Daten (2026 wächst) → Sättigung später neu prüfen, ggf. Kalibrierung/Ensemble-Gewichte. Backlog ist als
+erschöpft markiert.
+
+---
+
 ## Memory-Referenzen (für Folge-Sessions)
 
 Die detaillierten Entscheidungen liegen in `C:\Users\morit\.claude\projects\C--Projekte-F1Predictions\memory\`:
