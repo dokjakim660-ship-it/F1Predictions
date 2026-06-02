@@ -744,6 +744,43 @@ Feature trägt UND die im deployten Kontext nicht schon vorhanden ist.
 
 ---
 
+## 29. Phase 5.15 — Quali-Programm-Effizienz (Backlog #15, ⚠️ DROPPED, schadet post_fp2-Quali)
+
+**Stand: ✅ EVALUIERT, VERWORFEN 2026-06-02 (Negativ-Resultat).** Backlog-Idee #15: misst, wie gut ein Fahrer
+seine bestmögliche Quali-Runde zusammensetzt. Neuer L2-Wert `q_exec_gap_frac` in `fastf1.py._quali_exec_gap`
+= `(best_actual_lap − best_possible_sectors_lap) / best_possible` aus den Q-Lap-Sektorzeiten (min S1 + min S2
++ min S3 über die sauberen fliegenden Runden), **≥2 fliegende Runden erforderlich** (sonst theoretical=actual
+= Schein-0). Als Bruchteil = cross-track-vergleichbar. Feature `driver_quali_exec_gap_l5` = .shift(1)-gelaggter
+5-Rennen-Rolling-Mean je Fahrer (Execution-Skill-Rating, in allen Sets legal). No-Leakage-Guard + Round-Trip grün.
+
+**Sauberes Profil:** corr ~0 mit Form/Pace/Quali (|corr| < 0.05, neue Dimension), NaN 1.8%, Range 0–0.57%,
+**gute Face-Validity** — Elite-Qualifier Leclerc/Verstappen/Alonso unter den besten „Lap-Assemblern", Zhou/
+Hülkenberg hinten.
+
+**Verdikt (Holdout, 41 Rennen) — schadet dem deployten post_fp2-Quali, sonst neutral:**
+- **quali post_fp2 LGBMReg (deployt, sein „Zuhause"): 3.217 → 3.315 (+0.098 schlechter)** — reproduzierbar.
+- quali pre_weekend Ridge (deployt): 3.441 → 3.436 (−0.005, marginal).
+- race Ridge (deployt): 3.190 → 3.197 (+0.007, marginal schlechter).
+- Brier: Podium d_ens −0.0002, Teammate +0.0004 (beides Rausch-Band).
+
+**Entscheidung (Claude-Empfehlung, vom User delegiert): DROP.** Selbst auf den Quali-Markt gezielt schadet es
+ausgerechnet dem deployten post_fp2-Modell und hilft keinem deployten Modell. Das Execution-Signal (40–150ms,
+0.04–0.15% der Rundenzeit) ist zu klein/verrauscht gegenüber der Pace, die die Modelle schon tragen → reine
+Varianz für die sensitive LGBMReg. Code (inkl. L2-`q_exec_gap_frac`) byte-identisch zurückgebaut.
+
+**Sättigungs-Befund (zentral, nach 3 Drops in Folge):** Top-Speed (5.13), FP2-Teammate-Gap (5.14) und Quali-
+Exec (5.15) waren alle drei **saubere neue Dimensionen** (corr~0, gute Face-Validity, leakage-sicher) — und
+ALLE drei scheiterten auf den deployten Modellen. Das ist kein Zufall mehr: **der Feature-Satz ist gesättigt.**
+Grid + Quali + Pace + die behaltenen Skill-Deltas (Wet #6, Cluster #8, Momentum #9) fangen das vorhersagbare
+Signal bei N≈2700 / 41-Holdout-Rennen ab; weitere Mikro-Skill-Features fügen den deployten (überwiegend
+linearen) Modellen Varianz statt Signal hinzu. Die Gewinner kamen alle FRÜH (vor der Sättigung) und trugen
+größere, gröbere Effekte (Nässe-Spezialist, Track-Typ-Form, Auf-/Abwärtstrend). **Empfehlung: Feature-Jagd
+beenden, auf Konsolidierung / mehr Daten (Saison 2026 wächst) / andere Hebel (Kalibrierung, Ensemble-Gewichte,
+Live-ROI-Loop) umschwenken.** Verbleibende Backlog-Kandidaten (#13 Restart bounded, #12 Undercut komplex) sind
+niedriger-EV und mit hoher Wahrscheinlichkeit ebenfalls Drops.
+
+---
+
 ## Memory-Referenzen (für Folge-Sessions)
 
 Die detaillierten Entscheidungen liegen in `C:\Users\morit\.claude\projects\C--Projekte-F1Predictions\memory\`:
