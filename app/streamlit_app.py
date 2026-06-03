@@ -96,4 +96,11 @@ ui.app_header(
     status="pre-race podium + H2H probabilities",
 )
 
+# Theme toggle lives at the foot of the sidebar (below the nav). Changing it
+# flips a session-state flag and reruns, so the top-of-script ui.inject() above
+# repaints the whole app chrome on the next pass.
+with st.sidebar:
+    st.divider()
+    ui.theme_toggle()
+
 page.run()
