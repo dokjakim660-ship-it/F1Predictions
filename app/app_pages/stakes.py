@@ -29,6 +29,8 @@ from pathlib import Path
 import pandas as pd
 import streamlit as st
 
+import ui
+
 REPO = Path(__file__).resolve().parents[2]
 FEATURES_PATH = REPO / "data" / "features" / "next_race.parquet"
 ODDS_DIR = REPO / "data" / "odds"
@@ -256,11 +258,13 @@ def _render_target_section(target_short: str, bankroll: float, kelly_frac: float
 
 # --- Page body --------------------------------------------------------
 
-st.markdown("### Kelly Sizing")
-st.caption(
-    "Enter the decimal odds your bookmaker offers per driver and the calculator "
-    "returns the Kelly-optimal stake against the model's calibrated probability. "
-    "Default is Quarter-Kelly (0.25×) — robust against imperfect calibration."
+ui.page_header(
+    "Stakes",
+    eyebrow="Betting · Kelly sizing",
+    desc="Enter the decimal odds your bookmaker offers per driver and the "
+    "calculator returns the Kelly-optimal stake against the model's calibrated "
+    "probability. Default is Quarter-Kelly (0.25×) — robust against imperfect "
+    "calibration.",
 )
 
 c1, c2 = st.columns(2)
@@ -283,13 +287,11 @@ kelly_frac = c2.slider(
     help="Multiplier on raw Kelly. 0.25 = Quarter-Kelly (recommended), 1.0 = full Kelly.",
 )
 
-st.divider()
-st.subheader("Podium bets")
+ui.section("Podium bets")
 st.caption(_TARGET_DESCRIPTIONS["podium"])
 _render_target_section("podium", bankroll, kelly_frac)
 
-st.divider()
-st.subheader("Teammate H2H bets")
+ui.section("Teammate H2H bets")
 st.caption(_TARGET_DESCRIPTIONS["teammate"])
 _render_target_section("teammate", bankroll, kelly_frac)
 

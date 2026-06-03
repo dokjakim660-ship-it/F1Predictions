@@ -18,6 +18,8 @@ from pathlib import Path
 import pandas as pd
 import streamlit as st
 
+import ui
+
 REPO = Path(__file__).resolve().parents[2]
 INVENTORY_PATH = REPO / "data" / "reference" / "race_inventory.parquet"
 FEATURES_PATH = REPO / "data" / "features" / "next_race.parquet"
@@ -73,6 +75,13 @@ def _model_name(col: str) -> str:
 
 # --- Page body ----------------------------------------------------------
 
+ui.page_header(
+    "Next Race",
+    eyebrow="Race weekend · Saturday forecast",
+    desc="Calibrated per-driver podium and team-mate probabilities for the "
+    "upcoming Grand Prix, blended across the active model ensemble.",
+)
+
 target_short = st.radio("Target", ["podium", "teammate"], horizontal=True, key="next_race_target")
 
 preds = _load_predictions(target_short)
@@ -109,11 +118,9 @@ if not race_meta.empty:
     gp_name = race_meta["gp_name"].iloc[0]
     circuit = race_meta["circuit_name"].iloc[0]
     race_date = race_meta["race_date"].iloc[0].date()
-    st.markdown(f"### {gp_name}")
-    st.caption(f"Round {round_no} · {circuit} · {race_date}")
+    ui.section(gp_name, sub=f"Round {round_no} · {circuit} · {race_date}")
 else:
-    st.markdown(f"### {race_id}")
-    st.caption(f"Round {round_no}")
+    ui.section(str(race_id), sub=f"Round {round_no}")
 
 if has_fp2 == 0:
     st.warning(
@@ -148,7 +155,10 @@ prob_col = f"prob_{model_name}_cal"
 
 # --- Per-driver table ---------------------------------------------------
 
-st.subheader("Per-driver probabilities")
+ui.section(
+    "Per-driver probabilities",
+    sub="per-driver, sorted by probability",
+)
 if target_short == "podium":
     st.caption(
         "P(driver finishes P1–P3). Independent per driver — the top-3 rows sum "
@@ -161,9 +171,9 @@ else:
     )
 
 display = preds.sort_values(prob_col, ascending=False).reset_index(drop=True)
-display["P_str"] = (display[prob_col] * 100).map(lambda x: f"{x:.1f}%")
 display["grid"] = display["grid"].astype(int)
 
+prob_label = "P(podium)" if target_short == "podium" else "P(beat tm)"
 if target_short == "podium":
     rank_emoji = ["🥇", "🥈", "🥉"] + ["—"] * max(0, len(display) - 3)
     display["rank"] = rank_emoji[: len(display)]
@@ -173,7 +183,7 @@ if target_short == "podium":
             "grid": display["grid"],
             "driver": display["driver_family_name"],
             "team": display["constructor_name"],
-            "P(podium)": display["P_str"],
+            prob_label: ui.pct(display[prob_col]),
         }
     )
 else:
@@ -182,15 +192,20 @@ else:
             "grid": display["grid"],
             "driver": display["driver_family_name"],
             "team": display["constructor_name"],
-            "P(beat tm)": display["P_str"],
+            prob_label: ui.pct(display[prob_col]),
         }
     )
-st.dataframe(table, hide_index=True, width="stretch")
+st.dataframe(
+    ui.team_styler(table),
+    hide_index=True,
+    width="stretch",
+    column_config={prob_label: ui.prob_column(prob_label)},
+)
 
 # --- Team-pair view for teammate target --------------------------------
 
 if target_short == "teammate":
-    st.subheader("Team pairs")
+    ui.section("Team pairs", sub="favored driver per constructor")
     st.caption("Per team: the favored driver and their calibrated edge over the teammate.")
 
     pair_rows = []
@@ -212,11 +227,16 @@ if target_short == "teammate":
         {
             "team": pairs_df["team"],
             "favored": pairs_df["favored"],
-            "P": (pairs_df["P_fav"] * 100).map(lambda x: f"{x:.1f}%"),
+            "P": ui.pct(pairs_df["P_fav"]),
             "vs.": pairs_df["vs."],
         }
     )
-    st.dataframe(pairs_display, hide_index=True, width="stretch")
+    st.dataframe(
+        ui.team_styler(pairs_display),
+        hide_index=True,
+        width="stretch",
+        column_config={"P": ui.prob_column("P")},
+    )
 
 # --- Cross-model comparison expander -----------------------------------
 

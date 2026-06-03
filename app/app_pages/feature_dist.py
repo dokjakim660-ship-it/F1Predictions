@@ -21,6 +21,8 @@ import numpy as np
 import pandas as pd
 import streamlit as st
 
+import ui
+
 REPO = Path(__file__).resolve().parents[2]
 FEAT_PATH = REPO / "data" / "features" / "mvp.parquet"
 
@@ -82,7 +84,7 @@ GROUP_OPTIONS = {
 # Constant 2-tone palette for binary targets so green/red has a stable meaning.
 TARGET_COLOR_SCALE = alt.Scale(
     domain=["Podium", "No podium", "Beat", "Lost"],
-    range=["#2ca02c", "#d62728", "#2ca02c", "#d62728"],
+    range=[ui.GOOD, ui.BAD, ui.GOOD, ui.BAD],
 )
 
 
@@ -131,7 +133,14 @@ if df.empty:
     st.stop()
 
 
-# ── Controls ───────────────────────────────────────────────────────────────
+# ── Header + controls ──────────────────────────────────────────────────────
+ui.page_header(
+    "Feature Distribution",
+    eyebrow="Analysis · Data",
+    desc="How each feature is spread across the dataset, and the conditional "
+    "podium rate per value/bin — the question that actually matters for modelling.",
+)
+
 c1, c2 = st.columns([2, 3])
 with c1:
     category = st.selectbox("Category", options=list(FEATURE_GROUPS.keys()), index=0)
@@ -281,17 +290,17 @@ def _continuous_chart() -> alt.Chart:
 
 
 # ── Main chart ─────────────────────────────────────────────────────────────
-st.subheader(f"Distribution of `{feature}`  ·  {kind}")
+ui.section(f"Distribution of {feature}", sub=kind)
 if kind == "binary":
-    st.altair_chart(_binary_chart(), use_container_width=True)
+    ui.altair_chart(_binary_chart())
 elif kind == "discrete":
-    st.altair_chart(_discrete_chart(), use_container_width=True)
+    ui.altair_chart(_discrete_chart())
 else:
-    st.altair_chart(_continuous_chart(), use_container_width=True)
+    ui.altair_chart(_continuous_chart())
 
 
 # ── Conditional podium rate -- the modelling-relevant view ────────────────
-st.subheader("Conditional podium rate")
+ui.section("Conditional podium rate", sub="P(podium) per value/bin")
 st.caption(
     "Y-axis = P(podium) given the feature value/bin. Error bars are ±1 SE. "
     "Bars with very few samples are noisy — check the sample-count tooltip."
@@ -326,7 +335,7 @@ except (ValueError, TypeError):
 base = alt.Chart(rate).encode(
     x=alt.X("_x:N", title=feature, sort=sort_field, axis=alt.Axis(labelAngle=-30)),
 )
-bars = base.mark_bar(color="#1f77b4").encode(
+bars = base.mark_bar(color=ui.ACCENT).encode(
     y=alt.Y("podium_rate:Q", title="P(podium)", scale=alt.Scale(domain=[0, 1])),
     tooltip=[
         alt.Tooltip("_x:N", title=feature),
@@ -335,10 +344,10 @@ bars = base.mark_bar(color="#1f77b4").encode(
         alt.Tooltip("se:Q", title="SE", format=".3f"),
     ],
 )
-errs = base.mark_errorbar(color="#000").encode(y="lo:Q", y2="hi:Q")
+errs = base.mark_errorbar(color=ui.TEXT_MUTED).encode(y="lo:Q", y2="hi:Q")
 baseline = alt.Chart(pd.DataFrame({"y": [df["target_podium"].mean()]})).mark_rule(
-    color="grey", strokeDash=[4, 4],
+    color=ui.TEXT_FAINT, strokeDash=[4, 4],
 ).encode(y="y:Q")
 
-st.altair_chart((bars + errs + baseline).properties(height=320), use_container_width=True)
+ui.altair_chart((bars + errs + baseline).properties(height=320))
 st.caption(f"Dashed line = base rate ({df['target_podium'].mean():.1%}).")

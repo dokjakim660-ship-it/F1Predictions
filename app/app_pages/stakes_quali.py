@@ -32,6 +32,8 @@ from pathlib import Path
 import pandas as pd
 import streamlit as st
 
+import ui
+
 REPO = Path(__file__).resolve().parents[2]
 ODDS_DIR = REPO / "data" / "odds"
 ARCHIVE_DIR = REPO / "predictions" / "archive"
@@ -251,11 +253,13 @@ def _render_target_section(target_short: str, bankroll: float, kelly_frac: float
 
 # --- Page body --------------------------------------------------------
 
-st.markdown("### Pre-Quali Kelly Sizing")
-st.caption(
-    "Kelly-optimal stakes for the four qualifying markets, placed before qualifying. "
-    "Enter the decimal odds your bookmaker offers and the calculator sizes each bet "
-    "against the model's calibrated probability. Default is Quarter-Kelly (0.25×)."
+ui.page_header(
+    "Pre-Quali Stakes",
+    eyebrow="Betting · Kelly sizing",
+    desc="Kelly-optimal stakes for the four qualifying markets, placed before "
+    "qualifying. Enter the decimal odds your bookmaker offers and the calculator "
+    "sizes each bet against the model's calibrated probability. Default is "
+    "Quarter-Kelly (0.25×).",
 )
 
 # Sprint-weekend banner: pull has_fp2 from whichever target is available.
@@ -296,7 +300,6 @@ target_short = st.radio(
     key="qstakes_target",
 )
 
-st.divider()
-st.subheader(f"{_TARGETS[target_short]} bets")
+ui.section(f"{_TARGETS[target_short]} bets")
 st.caption(_TARGET_DESCRIPTIONS[target_short])
 _render_target_section(target_short, bankroll, kelly_frac)

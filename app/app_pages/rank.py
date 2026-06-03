@@ -22,6 +22,8 @@ from pathlib import Path
 import pandas as pd
 import streamlit as st
 
+import ui
+
 REPO = Path(__file__).resolve().parents[2]
 INVENTORY_PATH = REPO / "data" / "reference" / "race_inventory.parquet"
 
@@ -72,10 +74,12 @@ def _race_header(race_id: str, subtitle: str) -> None:
     inv = _load_inventory()
     meta = inv[inv["race_id"] == race_id]
     if not meta.empty:
-        st.markdown(f"### {meta['gp_name'].iloc[0]} — {subtitle}")
-        st.caption(f"{meta['circuit_name'].iloc[0]} · {meta['race_date'].iloc[0].date()}")
+        ui.section(
+            f"{meta['gp_name'].iloc[0]} — {subtitle}",
+            sub=f"{meta['circuit_name'].iloc[0]} · {meta['race_date'].iloc[0].date()}",
+        )
     else:
-        st.markdown(f"### {race_id} — {subtitle}")
+        ui.section(f"{race_id} — {subtitle}")
 
 
 def _medal_column(n: int, count: int = 3) -> list[str]:
@@ -84,10 +88,12 @@ def _medal_column(n: int, count: int = 3) -> list[str]:
 
 # --- Page body ----------------------------------------------------------
 
-st.markdown(
-    "Predicted **full grid order** — every driver gets an exact place, not just a "
-    "probability. Ridge is the default model; switch to compare regression vs the "
-    "learning-to-rank models."
+ui.page_header(
+    "Grid & Finish Order",
+    eyebrow="Race weekend · Full-grid ranking",
+    desc="Predicted complete order — every driver gets an exact place, not just a "
+    "probability. Ridge is the default; switch to compare regression vs the "
+    "learning-to-rank models.",
 )
 
 task_label = st.radio(
@@ -152,7 +158,7 @@ if task == "quali":
     c2.metric("FP2 data", "yes" if has_fp2 else "no")
     c3.metric("Predicted pole", disp["driver_family_name"].iloc[0])
 
-    st.subheader(f"Predicted grid — {'Post-FP2' if mode == 'post_fp2' else 'Pre-Weekend'}")
+    ui.section("Predicted grid", sub="Post-FP2" if mode == "post_fp2" else "Pre-Weekend")
     score_label = "score" if is_ranker else "exp pos"
     table = pd.DataFrame(
         {
@@ -201,7 +207,7 @@ else:
     )
     c3.metric("Drivers", len(disp))
 
-    st.subheader("Predicted finishing order")
+    ui.section("Predicted finishing order", sub="Δgrid vs start")
     st.caption("Δgrid = places gained (+) or lost (−) versus the starting grid.")
     score_label = "score" if is_ranker else "exp pos"
     table = pd.DataFrame(
@@ -218,10 +224,10 @@ else:
 
     def _color_delta(v: float) -> str:
         if v > 0:
-            return "color: #2e7d32"
+            return f"color: {ui.GOOD}"
         if v < 0:
-            return "color: #c62828"
-        return "color: gray"
+            return f"color: {ui.BAD}"
+        return f"color: {ui.TEXT_FAINT}"
 
     styled = table.style.map(_color_delta, subset=["Δgrid"]).format({"Δgrid": "{:+d}"})
     st.dataframe(styled, hide_index=True, width="stretch")

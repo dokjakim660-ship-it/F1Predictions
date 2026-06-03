@@ -17,6 +17,8 @@ import altair as alt
 import pandas as pd
 import streamlit as st
 
+import ui
+
 REPO = Path(__file__).resolve().parents[2]
 ROI_LOG = REPO / "data" / "roi" / "log.parquet"
 INVENTORY_PATH = REPO / "data" / "reference" / "race_inventory.parquet"
@@ -39,6 +41,13 @@ def _load_inventory() -> pd.DataFrame:
 
 
 # --- Page body ------------------------------------------------------------
+
+ui.page_header(
+    "ROI Tracker",
+    eyebrow="Betting · Running P&L",
+    desc="Cumulative profit and loss of the Kelly-sized bets placed since odds "
+    "were first saved — the actual 'beat Tipico?' scoreboard.",
+)
 
 log = _load_log()
 
@@ -75,11 +84,9 @@ c2.metric("Total staked", f"€{total_stake:.2f}")
 c3.metric("P&L", f"€{total_pnl:+.2f}")
 c4.metric("ROI", f"{roi_pct:+.1f}%", delta=f"{win_rate:.0f}% win rate")
 
-st.divider()
-
 # --- Cumulative P&L chart -------------------------------------------------
 
-st.subheader("Cumulative P&L")
+ui.section("Cumulative P&L", sub="one point per bet")
 
 log["cumulative_pnl"] = log["pnl_eur"].cumsum()
 log["cumulative_stake"] = log["stake_eur"].cumsum()
@@ -98,7 +105,7 @@ pnl_chart = (
     .encode(
         x=alt.X("bet_index:Q", title="Bet #"),
         y=alt.Y("cumulative_pnl:Q", title="Cumulative P&L (€)"),
-        color=alt.value("#1f77b4"),
+        color=alt.value(ui.ACCENT),
         tooltip=[
             alt.Tooltip("label:N", title="Bet"),
             alt.Tooltip("odds:Q", format=".2f", title="Odds"),
@@ -119,11 +126,11 @@ zero_line = (
     .encode(y="y:Q")
 )
 
-st.altair_chart((pnl_chart + zero_line), use_container_width=True)
+ui.altair_chart((pnl_chart + zero_line))
 
 # --- Per-race breakdown ---------------------------------------------------
 
-st.subheader("Per-race breakdown")
+ui.section("Per-race breakdown")
 
 race_summary = (
     log.groupby(["race_id", "gp_name"] if "gp_name" in log.columns else ["race_id"])

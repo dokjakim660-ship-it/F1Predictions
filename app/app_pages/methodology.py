@@ -4,6 +4,15 @@ from __future__ import annotations
 
 import streamlit as st
 
+import ui
+
+ui.page_header(
+    "Methodology",
+    eyebrow="About · How it works",
+    desc="What the models predict, where the signal comes from, and how it is "
+    "evaluated.",
+)
+
 st.markdown(
     """
 ### What the model predicts

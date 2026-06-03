@@ -16,6 +16,8 @@ import numpy as np
 import pandas as pd
 import streamlit as st
 
+import ui
+
 REPO = Path(__file__).resolve().parents[2]
 INVENTORY_PATH = REPO / "data" / "reference" / "race_inventory.parquet"
 _BOOT_N = 1000
@@ -112,6 +114,13 @@ def _per_race_brier(target_short: str, target_col: str) -> pd.DataFrame:
 
 # --- Page body -----------------------------------------------------------
 
+ui.page_header(
+    "Backtest History",
+    eyebrow="Analysis · Holdout test",
+    desc="Calibrated Brier per model with bootstrap CIs, the per-race trend, "
+    "and a race-by-race drilldown on the sealed holdout test.",
+)
+
 target_short = st.radio("Target", ["podium", "teammate"], horizontal=True, key="target_radio")
 target_col = "target_podium" if target_short == "podium" else "target_beat_teammate"
 
@@ -138,7 +147,7 @@ c3.metric("Base rate", f"{preds[target_col].mean():.1%}")
 
 # --- Brier table with 95% CI --------------------------------------------
 
-st.subheader("Calibrated Brier per model")
+ui.section("Calibrated Brier per model", sub="lower is better")
 st.caption(
     "Point estimate + 95% bootstrap CI (1000× race-level resamples). "
     "Lower = better. Overlapping CIs ≈ tie within sampling noise."
@@ -172,7 +181,7 @@ st.dataframe(
 
 ci_chart = (
     alt.Chart(brier_df)
-    .mark_errorbar(thickness=2, color="#1f77b4")
+    .mark_errorbar(thickness=2, color=ui.ACCENT)
     .encode(
         x=alt.X("brier_lo:Q", scale=alt.Scale(zero=False), title="Brier (calibrated)"),
         x2="brier_hi:Q",
@@ -181,7 +190,7 @@ ci_chart = (
 )
 ci_points = (
     alt.Chart(brier_df)
-    .mark_point(filled=True, size=120, color="#1f77b4")
+    .mark_point(filled=True, size=120, color=ui.ACCENT)
     .encode(
         x="brier_cal:Q",
         y=alt.Y("model:N", sort=brier_df["model"].tolist()),
@@ -193,13 +202,13 @@ ci_points = (
         ],
     )
 )
-st.altair_chart((ci_chart + ci_points).properties(height=30 * len(brier_df) + 60), use_container_width=True)
+ui.altair_chart((ci_chart + ci_points).properties(height=30 * len(brier_df) + 60))
 
 # --- Reliability plot (existing artefact) -------------------------------
 
 plot_path = REPO / "models" / f"reliability_mvp_{target_short}.png"
 if plot_path.exists():
-    st.subheader("Reliability diagram (holdout test, calibrated)")
+    ui.section("Reliability diagram", sub="holdout test, calibrated")
     # Fixed width on purpose. With use_container_width=True the image height
     # scales with the iframe width; a 1px width fluctuation propagates into
     # a height fluctuation, Streamlit reports a new iframe height to HF, HF
@@ -209,7 +218,7 @@ if plot_path.exists():
 
 # --- Brier trend across the holdout -------------------------------------
 
-st.subheader("Brier trend across the holdout test")
+ui.section("Brier trend across the holdout test", sub="one point per Grand Prix")
 st.caption(
     "Per-race calibrated Brier, one point per Grand Prix. "
     "Spikes mark messy weekends (wet races, safety cars, multi-DNF chaos); "
@@ -241,11 +250,11 @@ trend_chart = (
 )
 # NOTE: .interactive() removed — it captures scroll events inside the HF
 # Spaces iframe and causes the page to jump when the user scrolls past the chart.
-st.altair_chart(trend_chart, use_container_width=True)
+ui.altair_chart(trend_chart)
 
 # --- Per-race drilldown -------------------------------------------------
 
-st.subheader("Per-race predictions")
+ui.section("Per-race predictions", sub="drilldown")
 inv = _load_inventory()
 race_labels = (
     preds[["race_id"]]

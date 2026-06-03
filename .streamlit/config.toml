@@ -1,0 +1,28 @@
+# ============================================================
+# F1 PREDICTIONS — THEME (design-system tokens)
+# Source of truth: app/ui.py mirrors these as CSS custom properties.
+# This file themes Streamlit's native widgets (incl. the canvas-rendered
+# st.dataframe grid, which CSS cannot reach) — so it MUST ship to HF.
+# Deploy: scripts/sync_to_hf.py copies it to the Space root and the
+# Dockerfile copies it next to the app working dir (see deploy/hf/Dockerfile).
+# ============================================================
+
+[theme]
+base = "dark"
+primaryColor = "#3b82f6"            # --accent
+backgroundColor = "#080d18"         # --bg
+secondaryBackgroundColor = "#0e1626" # --surface
+textColor = "#eef3fc"               # --text
+font = "sans-serif"
+# Newer (>=1.45) tokens — ignored gracefully by older Streamlit.
+borderColor = "#1e2c46"             # --border
+baseFontSize = 14
+
+[theme.sidebar]
+backgroundColor = "#0a1120"          # --sidebar
+secondaryBackgroundColor = "#0e1626" # --surface
+borderColor = "#1e2c46"             # --border
+
+[server]
+# Belt-and-suspenders against the HF-iframe resize loop (see app/ui.py block 5).
+enableStaticServing = false

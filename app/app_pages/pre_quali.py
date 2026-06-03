@@ -21,6 +21,8 @@ import altair as alt
 import pandas as pd
 import streamlit as st
 
+import ui
+
 REPO = Path(__file__).resolve().parents[2]
 INVENTORY_PATH = REPO / "data" / "reference" / "race_inventory.parquet"
 
@@ -84,6 +86,13 @@ def _fmt_pct(x: float) -> str:
 
 # --- Page body ----------------------------------------------------------
 
+ui.page_header(
+    "Pre-Quali",
+    eyebrow="Race weekend · Before qualifying",
+    desc="Thursday/Friday market forecast — pole, top-3, top-10 and team-mate "
+    "qualifying probabilities, with the FP2 long-run effect broken out.",
+)
+
 target_short = st.radio(
     "Target",
     list(_TARGETS),
@@ -113,10 +122,9 @@ if not race_meta.empty:
     gp_name = race_meta["gp_name"].iloc[0]
     circuit = race_meta["circuit_name"].iloc[0]
     race_date = race_meta["race_date"].iloc[0].date()
-    st.markdown(f"### {gp_name} — pre-qualifying")
-    st.caption(f"{circuit} · {race_date} · forecast before qualifying")
+    ui.section(gp_name, sub=f"{circuit} · {race_date} · forecast before qualifying")
 else:
-    st.markdown(f"### {race_id} — pre-qualifying")
+    ui.section(str(race_id), sub="pre-qualifying")
 
 if has_fp2 == 0:
     st.warning(
@@ -171,20 +179,26 @@ if view in ("post_fp2", "pre_weekend"):
     c2.metric("FP2 data", "yes" if has_fp2 else "no")
     c3.metric(f"Top {label}", fav["driver_family_name"])
 
-    st.subheader(f"P({label}) — {'Post-FP2' if view == 'post_fp2' else 'Pre-Weekend'}")
+    ui.section(f"P({label})", sub="Post-FP2" if view == "post_fp2" else "Pre-Weekend")
     medals = ["🥇", "🥈", "🥉"]
     n_medal = _MEDAL_COUNT[target_short]
     rank = [medals[i] if i < n_medal else "" for i in range(len(disp))]
+    prob_label = f"P({label})"
     table = pd.DataFrame(
         {
             "": rank,
             "driver": disp["driver_family_name"],
             "team": disp["constructor_name"],
             "recentQ": disp["recent_quali_pos"].map(lambda x: f"{x:.1f}" if pd.notna(x) else "—"),
-            f"P({label})": disp[col].map(_fmt_pct),
+            prob_label: ui.pct(disp[col]),
         }
     )
-    st.dataframe(table, hide_index=True, width="stretch")
+    st.dataframe(
+        ui.team_styler(table),
+        hide_index=True,
+        width="stretch",
+        column_config={prob_label: ui.prob_column(prob_label)},
+    )
 
 # --- Delta view (FP2 effect) -------------------------------------------
 
@@ -211,7 +225,7 @@ else:
         f"{down['delta'].iloc[0] * 100:+.1f} pp" if not down.empty else None,
     )
 
-    st.subheader(f"P({label}) — FP2 effect")
+    ui.section(f"P({label}) — FP2 effect", sub="Pre-Weekend → Post-FP2")
     st.caption("How FP2 long-run pace moved each driver: Pre-Weekend → Post-FP2.")
 
     tbl = pd.DataFrame(
@@ -226,10 +240,10 @@ else:
 
     def _color_delta(v: float) -> str:
         if v > 0.005:
-            return "color: #2e7d32"
+            return f"color: {ui.GOOD}"
         if v < -0.005:
-            return "color: #c62828"
-        return "color: gray"
+            return f"color: {ui.BAD}"
+        return f"color: {ui.TEXT_FAINT}"
 
     styled = tbl.style.map(_color_delta, subset=["Δ"]).format(
         {"preWE": _fmt_pct, "postFP2": _fmt_pct, "Δ": lambda v: f"{v * 100:+.1f} pp"}
@@ -249,7 +263,7 @@ else:
                     x=alt.X("pp:Q", title="Δ probability (pp)"),
                     y=alt.Y("driver:N", sort="-x", title=None),
                     color=alt.condition(
-                        alt.datum.pp > 0, alt.value("#2e7d32"), alt.value("#c62828")
+                        alt.datum.pp > 0, alt.value(ui.GOOD), alt.value(ui.BAD)
                     ),
                     tooltip=[
                         alt.Tooltip("driver:N"),
@@ -258,7 +272,7 @@ else:
                 )
                 .properties(height=max(220, 18 * len(chart_df)))
             )
-            st.altair_chart(bar, use_container_width=True)
+            ui.altair_chart(bar)
 
 # --- Cross-model comparison --------------------------------------------
 

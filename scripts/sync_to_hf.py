@@ -49,6 +49,9 @@ SYNC_PLAN: list[tuple[str | tuple[str, ...], str, str]] = [
     ("deploy/hf/Dockerfile", "Dockerfile", "file"),
     ("deploy/hf/requirements.txt", "requirements.txt", "file"),
     ("deploy/hf/README.md", "README.md", "file"),
+    # Native theme tokens (design-system). Lands at the Space root; the
+    # Dockerfile copies it next to the app working dir so Streamlit loads it.
+    (".streamlit/config.toml", ".streamlit/config.toml", "file"),
     ("app", "app", "dir"),
     (
         (

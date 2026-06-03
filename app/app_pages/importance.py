@@ -13,7 +13,16 @@ import altair as alt
 import pandas as pd
 import streamlit as st
 
+import ui
+
 REPO = Path(__file__).resolve().parents[2]
+
+ui.page_header(
+    "Feature Importance",
+    eyebrow="Analysis · Model internals",
+    desc="What the best model leans on per target — mean |SHAP| for podium, "
+    "standardised coefficients for team-mate H2H.",
+)
 
 target_short = st.radio(
     "Target", ["podium", "teammate"], horizontal=True, key="importance_target_radio"
@@ -87,7 +96,7 @@ chart = (
             "direction_label:N",
             scale=alt.Scale(
                 domain=["increases", "decreases", "mixed"],
-                range=["#2ca02c", "#d62728", "#888888"],
+                range=[ui.GOOD, ui.BAD, ui.TEXT_FAINT],
             ),
             legend=alt.Legend(title=f"Effect on P({target_short})"),
         ),
@@ -99,7 +108,7 @@ chart = (
     )
     .properties(height=28 * top_n + 60)
 )
-st.altair_chart(chart, width="stretch")
+ui.altair_chart(chart)
 
-st.subheader("Full ranked table")
+ui.section("Full ranked table")
 st.dataframe(imp, hide_index=True, width="stretch")

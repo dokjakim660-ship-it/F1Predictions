@@ -15,6 +15,12 @@ WORKDIR $HOME/app
 COPY --chown=user:user requirements.txt ./
 RUN pip install --no-cache-dir --user -r requirements.txt
 
+# Native theme tokens. WORKDIR is $HOME/app and the app runs as
+# `streamlit run app/streamlit_app.py`, so Streamlit resolves config from
+# $HOME/app/.streamlit/config.toml — copy it there so the dark theme applies
+# to the canvas-rendered dataframe grid (which CSS injection cannot reach).
+COPY --chown=user:user .streamlit/ ./.streamlit/
+
 # App code + precomputed artefacts. The page modules use
 # Path(__file__).resolve().parents[2] to find the repo root, so keeping the
 # layout matching the GitHub source repo lets the same paths resolve here.

@@ -17,6 +17,8 @@ from pathlib import Path
 import pandas as pd
 import streamlit as st
 
+import ui
+
 REPO = Path(__file__).resolve().parents[2]
 INVENTORY_PATH = REPO / "data" / "reference" / "race_inventory.parquet"
 PREDICTIONS_PATH = REPO / "predictions" / "next_race_dnf.parquet"
@@ -66,6 +68,13 @@ def _models_available(preds: pd.DataFrame, mode: str) -> list[str]:
 
 # --- Page body ----------------------------------------------------------
 
+ui.page_header(
+    "DNF Risk",
+    eyebrow="Race weekend · Reliability",
+    desc="Calibrated probability each driver does not finish the upcoming race, "
+    "across three timing modes.",
+)
+
 preds = _load_predictions()
 if preds.empty:
     st.error("No DNF predictions yet. Run `just predict-dnf YEAR ROUND` locally and re-deploy.")
@@ -75,10 +84,12 @@ race_id = preds["race_id"].iloc[0]
 inv = _load_inventory()
 race_meta = inv[inv["race_id"] == race_id]
 if not race_meta.empty:
-    st.markdown(f"### {race_meta['gp_name'].iloc[0]} — DNF risk")
-    st.caption(f"{race_meta['circuit_name'].iloc[0]} · {race_meta['race_date'].iloc[0].date()}")
+    ui.section(
+        race_meta["gp_name"].iloc[0],
+        sub=f"{race_meta['circuit_name'].iloc[0]} · {race_meta['race_date'].iloc[0].date()}",
+    )
 else:
-    st.markdown(f"### {race_id} — DNF risk")
+    ui.section(str(race_id))
 
 st.warning(
     "**Negative result (Phase 5.2):** no DNF model beats the team-reliability "
@@ -119,21 +130,25 @@ c3.metric("Highest risk", preds.sort_values(prob_col).iloc[-1]["driver_family_na
 
 # --- Per-driver table ---------------------------------------------------
 
-st.subheader("Per-driver P(DNF)")
+ui.section("Per-driver P(DNF)", sub="higher = more likely to retire")
 st.caption("P(driver does not finish the race). Higher = more likely to retire.")
 
 display = preds.sort_values(prob_col, ascending=False).reset_index(drop=True)
-display["P_str"] = (display[prob_col] * 100).map(lambda x: f"{x:.1f}%")
 display["grid"] = display["grid"].astype("Int64")
 table = pd.DataFrame(
     {
         "grid": display["grid"],
         "driver": display["driver_family_name"],
         "team": display["constructor_name"],
-        "P(DNF)": display["P_str"],
+        "P(DNF)": ui.pct(display[prob_col]),
     }
 )
-st.dataframe(table, hide_index=True, width="stretch")
+st.dataframe(
+    ui.team_styler(table),
+    hide_index=True,
+    width="stretch",
+    column_config={"P(DNF)": ui.prob_column("P(DNF)")},
+)
 
 # --- Cross-model comparison expander ------------------------------------
 
