@@ -79,13 +79,18 @@ feature_dist_page = st.Page(
     title="Feature Distribution",
     icon=":material/analytics:",
 )
+design_system_page = st.Page(
+    "app_pages/design_system.py",
+    title="Design System",
+    icon=":material/palette:",
+)
 
 page = st.navigation(
     {
         "Race weekend": [next_race_page, pre_quali_page, rank_page, dnf_page],
         "Betting": [stakes_page, stakes_quali_page, roi_page],
         "Analysis": [backtest_page, importance_page, feature_dist_page],
-        "About": [methodology_page],
+        "About": [methodology_page, design_system_page],
     },
     position="sidebar",
 )

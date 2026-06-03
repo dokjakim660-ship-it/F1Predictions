@@ -39,7 +39,8 @@ if not imp_path.exists():
 imp = pd.read_parquet(imp_path)
 
 if target_short == "podium":
-    model_name = "XGBoost (best model on holdout test)"
+    model_name = "XGBoost"
+    model_note = "SHAP attributions on the gradient-boosted podium model."
     score_label = "mean(|SHAP|)"
     blurb = (
         "Bar length = **mean of |SHAP|** per feature across all holdout-test rows. "
@@ -49,7 +50,8 @@ if target_short == "podium":
         "that pre-race grid order carries most of the podium signal."
     )
 else:
-    model_name = "LogisticRegression (best model on holdout test)"
+    model_name = "LogisticRegression"
+    model_note = "Standardised coefficients of the teammate-H2H model."
     score_label = "|standardised coefficient|"
     blurb = (
         "Bar length = **|standardised LogReg coefficient|**. Arrow = sign of the "
@@ -62,11 +64,15 @@ else:
     )
 
 c1, c2, c3 = st.columns(3)
-c1.metric("Model", model_name.split(" (")[0])
+c1.metric("Model", model_name)
 c2.metric("Features ranked", f"{len(imp):,}")
 c3.metric("Score", score_label)
 
 st.markdown(blurb)
+st.caption(
+    f"{model_note} This is the model the importance is computed on — for the "
+    "live ranking of all models by calibrated Brier, see **Backtest History**."
+)
 
 top_n = st.slider("Top features to show", min_value=5, max_value=min(40, len(imp)), value=20)
 top = imp.head(top_n).copy()

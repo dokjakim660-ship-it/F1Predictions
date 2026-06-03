@@ -1,0 +1,26 @@
+# Normalise line endings: store text as LF in the repo and check out LF on
+# every platform. Stops the "LF will be replaced by CRLF" churn warnings on
+# Windows (core.autocrlf=true) and keeps cross-machine diffs clean.
+* text=auto eol=lf
+
+# Explicit text types (belt and suspenders)
+*.py    text eol=lf
+*.toml  text eol=lf
+*.md    text eol=lf
+*.json  text eol=lf
+*.cfg   text eol=lf
+*.txt   text eol=lf
+*.yml   text eol=lf
+*.yaml  text eol=lf
+justfile text eol=lf
+
+# Binary artefacts — never touch line endings
+*.parquet binary
+*.pkl     binary
+*.png     binary
+*.jpg     binary
+*.jpeg    binary
+*.gif     binary
+*.ico     binary
+*.pdf     binary
+*.zip     binary
