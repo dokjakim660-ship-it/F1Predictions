@@ -7,13 +7,14 @@ sdk: docker
 app_port: 7860
 pinned: false
 license: mit
-short_description: Pre-race podium + teammate-H2H probabilities from FastF1.
+short_description: F1 betting models — podium, quali, grid, DNF + Kelly/ROI.
 ---
 
 # F1 Predictions
 
-Pre-race podium + teammate-H2H probabilities for Formula 1, built from scratch
-as a learning project — also trying to beat Tipico long-run.
+Probabilistic Formula 1 betting models — podium, team-mate H2H, the four
+qualifying markets, full grid & finish order, and DNF risk — built from scratch
+as a learning project and a long-run attempt to beat Tipico.
 
 The Streamlit app is **inference-only**: it reads parquets and reliability
 diagrams that were trained, calibrated, and evaluated locally and committed
@@ -44,8 +45,8 @@ into this Space. No FastF1 / xgboost / shap dependencies at runtime.
   pre-quali probability.
 - **ROI Tracker** — running P&L of the Kelly-sized bets placed since odds
   were first saved, settled after each weekend from realised results.
-- **Methodology** — what the two targets are, how features are built and
-  evaluated, what comes next.
+- **Methodology** — what each market is, how features are built and evaluated,
+  and the honest negative results (the grid carries most of the signal).
 - **Backtest History** — per-model calibrated Brier with 95 % bootstrap CIs,
   the reliability diagram, per-race Brier trend across the holdout window,
   and a Grand-Prix drilldown with per-race Brier callouts.
