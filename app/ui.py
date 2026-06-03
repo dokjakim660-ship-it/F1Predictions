@@ -254,6 +254,11 @@ h1, h2, h3 {{ letter-spacing: -.02em; }}
 
 /* ---- sidebar ---- */
 [data-testid="stSidebar"] {{ background: var(--sidebar); border-right: 1px solid var(--border); }}
+/* Pull the theme toggle (user content) above the navigation, below the header */
+[data-testid="stSidebarContent"] {{ display: flex; flex-direction: column; }}
+[data-testid="stSidebarHeader"] {{ order: 0; }}
+[data-testid="stSidebarUserContent"] {{ order: 1; padding-top: .25rem; }}
+[data-testid="stSidebarNav"] {{ order: 2; }}
 [data-testid="stSidebarNav"] {{ padding-top: .25rem; }}
 [data-testid="stSidebarNav"] a {{ border-radius: var(--r-sm); }}
 [data-testid="stSidebarNav"] a:hover {{ background: var(--surface-2); }}
@@ -307,6 +312,22 @@ h1, h2, h3 {{ letter-spacing: -.02em; }}
 
 /* ---- alerts ---- */
 [data-testid="stAlert"] {{ border-radius:var(--r-md); border:1px solid var(--border); }}
+
+/* ---- model comparison card (ui.model_comparison) ---- */
+.f1-mc {{ display:flex; flex-direction:column; gap:2px; background:var(--surface); border:1px solid var(--border); border-radius:var(--r-lg); padding:8px 6px; box-shadow:var(--shadow); }}
+.f1-mc-row {{ display:flex; align-items:center; gap:12px; padding:9px 12px; border-radius:var(--r-md); }}
+.f1-mc-row.active {{ background:var(--accent-bg); }}
+.f1-mc-row .dot {{ width:9px; height:9px; border-radius:50%; flex:none; background:var(--text-faint); }}
+.f1-mc-row.active .dot {{ background:var(--accent); box-shadow:0 0 0 3px var(--accent-bg); }}
+.f1-mc-row .name {{ font-weight:600; font-size:13.5px; color:var(--text-muted); min-width:96px; }}
+.f1-mc-row.active .name {{ color:var(--text); font-weight:700; }}
+.f1-mc-row .track {{ position:relative; flex:1; height:8px; border-radius:999px; background:var(--surface-3); overflow:hidden; min-width:60px; }}
+.f1-mc-row .fill {{ position:absolute; left:0; top:0; bottom:0; border-radius:999px; background:var(--text-faint); }}
+.f1-mc-row.active .fill {{ background:var(--accent); }}
+.f1-mc-row .score {{ font-family:var(--font-mono); font-size:13px; font-weight:600; color:var(--text-muted); min-width:52px; text-align:right; }}
+.f1-mc-row.active .score {{ color:var(--text); }}
+.f1-mc-row .tag {{ font-size:10px; font-weight:700; letter-spacing:.04em; text-transform:uppercase; color:var(--accent-2); background:var(--accent-bg); border:1px solid var(--accent-bg); padding:2px 8px; border-radius:999px; min-width:34px; text-align:center; }}
+.f1-mc-row .tag.off {{ visibility:hidden; }}
 
 /* ---- TABLES: always a dark data panel (both themes — see module docstring) ---- */
 [data-testid="stDataFrame"], [data-testid="stDataEditor"] {{
@@ -371,6 +392,42 @@ def section(title: str, sub: str | None = None) -> None:
         f'<div class="f1-section"><h4>{title}</h4>{sub_html}<span class="rule"></span></div>',
         unsafe_allow_html=True,
     )
+
+
+def model_comparison(
+    rows: list[dict[str, Any]],
+    active_key: Any | None = None,
+    fmt: Any = lambda s: f"{s:.4f}",
+) -> None:
+    """Render the design's model-comparison card.
+
+    rows: list of {"key", "name", "score"} where a LOWER score is better
+    (e.g. calibrated Brier). Rows are sorted best-first (top), the bar length
+    encodes relative performance, and the row matching `active_key` is
+    highlighted with an "active" tag — so you always see which model a view
+    is using and the best performer sits on top.
+    """
+    scored = [r for r in rows if r.get("score") is not None]
+    if not scored:
+        return
+    scored = sorted(scored, key=lambda r: r["score"])
+    best = scored[0]["score"]
+    html = ['<div class="f1-mc">']
+    for r in scored:
+        active = active_key is not None and r["key"] == active_key
+        # best/score in (0,1]; floor so the worst model still shows a stub bar.
+        fill = max(0.08, min(1.0, best / r["score"])) * 100 if r["score"] else 0.08
+        tag = '<span class="tag">active</span>' if active else '<span class="tag off">·</span>'
+        html.append(
+            f'<div class="f1-mc-row{" active" if active else ""}">'
+            f'<span class="dot"></span>'
+            f'<span class="name">{r["name"]}</span>'
+            f'<span class="track"><span class="fill" style="width:{fill:.0f}%"></span></span>'
+            f'<span class="score">{fmt(r["score"])}</span>'
+            f"{tag}</div>"
+        )
+    html.append("</div>")
+    st.markdown("".join(html), unsafe_allow_html=True)
 
 
 # ============================================================
