@@ -15,10 +15,10 @@ from __future__ import annotations
 
 from pathlib import Path
 
-import numpy as np
 import pandas as pd
 import streamlit as st
 
+import metrics
 import ui
 
 REPO = Path(__file__).resolve().parents[2]
@@ -64,32 +64,6 @@ def _load_features() -> pd.DataFrame:
     if not FEATURES_PATH.exists():
         return pd.DataFrame()
     return pd.read_parquet(FEATURES_PATH)
-
-
-@st.cache_data(show_spinner=False)
-def _holdout_brier(target_short: str) -> dict[str, float]:
-    """Per-model calibrated Brier on the sealed holdout test (lower = better).
-
-    Drives best-first ordering of the model selector and the model-comparison
-    card — the same source the Backtest page reports, so 'which model is best'
-    is consistent across the app. Returns {} if the holdout file is absent.
-    """
-    path = REPO / "predictions" / f"mvp_test_{target_short}.parquet"
-    if not path.exists():
-        return {}
-    h = pd.read_parquet(path)
-    y_col = "target_podium" if target_short == "podium" else "target_beat_teammate"
-    if y_col not in h.columns:
-        return {}
-    y = h[y_col].astype(int).to_numpy()
-    out: dict[str, float] = {}
-    for col in h.columns:
-        if col.startswith("prob_") and col.endswith("_cal"):
-            name = col.removeprefix("prob_").removesuffix("_cal")
-            if name == "constantrate":
-                continue
-            out[name] = float(np.mean((h[col].to_numpy() - y) ** 2))
-    return out
 
 
 def _cal_prob_cols(preds: pd.DataFrame) -> list[str]:
@@ -169,7 +143,7 @@ model_names = [_model_name(c) for c in prob_cols if _model_name(c) != "constantr
 # Order best-first by holdout-test Brier so the strongest model sits leftmost
 # (and is the default selection). Fall back to the documented preference order
 # for any model without a holdout score.
-briers = _holdout_brier(target_short)
+briers = metrics.holdout_brier(target_short)
 model_options = [m for m in _MODEL_ORDER if m in model_names]
 model_options.sort(key=lambda m: (briers.get(m, float("inf")), _MODEL_ORDER.index(m)))
 if not model_options:  # defensive: should never happen given the predict script
