@@ -1,4 +1,4 @@
-"""Methodology page — what the model does, how it's trained, what's next."""
+"""Methodology page — what the app predicts, how it's trained, what we learned."""
 
 from __future__ import annotations
 
@@ -44,42 +44,78 @@ _holdout_extent = (
 
 st.markdown(
     f"""
-### What the model predicts
+### What the app predicts
 
-Two betting markets per F1 race weekend, **after qualifying**, before the race:
+Several F1 betting markets, grouped by **when** you would place the bet.
+
+**After qualifying** — the grid is known, the race isn't:
 
 - **Podium** — P(driver finishes P1–P3). Imbalanced base rate ~15 %.
   {_best_line("podium")}
 - **Teammate H2H** — P(driver finishes ahead of their constructor team-mate).
   Balanced ~50 %. {_best_line("teammate")}
+- **Grid & Finish Order** — a full predicted classification (every driver gets
+  an exact place), via position-regression (Ridge default) vs. learning-to-rank.
+- **DNF Risk** — P(driver retires), as a calibrated reliability estimate.
+
+**Before qualifying** — Thursday/Friday, no grid yet:
+
+- Four **qualifying markets** — pole, top-3, top-10 (Q3), and out-qualify the
+  team-mate — each in two timing modes (**pre-weekend** vs. **post-FP2**) so you
+  can see how much the FP2 long-run pace moves the forecast.
+
+**Betting layer:**
+
+- **Kelly stakes** (pre-race and pre-quali) size each bet against the model's
+  calibrated probability — Quarter-Kelly by default, robust to miscalibration.
+- The **ROI tracker** settles placed bets race-by-race: the actual
+  "do we beat Tipico's margin?" scoreboard. The live loop runs from 2026.
 
 ### Where the signal comes from
 
-A 31-feature table joined from three L2 sources (one row = one driver × one race):
+One row = one driver × one race, joined from three sources. It started as ~31
+MVP features and grew through a Phase-5 wave of additions:
 
-- **FastF1 telemetry** — quali gap to pole, FP2 long-run pace gap
-  (the secret weapon), FP2 short-run pace.
-- **Jolpica results** — grid, rolling driver & constructor form (DNF rate,
-  points, finishes — all `.shift(1)`-lagged so race N sees only races strictly
-  before N).
-- **Track attributes** — length, corners, DRS zones, street vs permanent.
-- Plus driver × track history, season progress, an era flag for the 2022
-  ground-effect reglement bump.
+- **FastF1 telemetry** — quali gap to pole, **FP2 long-run pace gap** (the
+  secret weapon), short-run pace, pit-lane speed, race-start position gain.
+- **Jolpica results** — grid, rolling driver & constructor form (finishes, DNF
+  rate, points), team standings — all `.shift(1)`-lagged so race N sees only
+  races strictly before it.
+- **Track attributes** — length, corners, DRS zones, street vs. permanent, and
+  a measured **overtaking index** rebuilt from lap-by-lap position changes.
+- **Derived skill/strategy** — teammate quali gap, wet-weather skill delta,
+  form momentum, and a de-biased team-execution residual (result vs. pace).
+- Plus driver × track history, season progress, and an era flag for the 2022
+  ground-effect rules.
 
 ### How it is evaluated
 
 - **Walk-forward** validation, four expanding-window folds across 2018 →
-  mid-2024. Optuna sees these.
-- **Holdout test** = 2024-07 onward ({_holdout_extent}).
-  Sealed; Optuna never touches it.
-- Headline metric is **Brier**, with **Isotonic calibration** before
-  reporting. Paired bootstrap (1000×, races resampled) for model comparisons.
+  mid-2024. Optuna only ever sees these.
+- **Holdout test** = 2024-07 onward ({_holdout_extent}). Sealed; the tuner
+  never touches it. Headline metric is **Brier** for the probability markets,
+  **position-MAE** for the ranking models.
+- **Isotonic calibration** before any probability is reported (mandatory after
+  `scale_pos_weight`), and paired bootstrap (1000×, races resampled) for every
+  model comparison — so "model A beats B" means it beats sampling noise too.
 
-### What is next
+### What the data keeps telling us
 
-Phase 3 added the **Next Race** page (default tab) so each Saturday-after-quali
-the calibrated podium + teammate-H2H probabilities are one `just predict-next`
-away. Phase 4 brings real bookmaker odds and the ROI backtest — the actual
-"beat Tipico?" answer.
+The honest part, and the most consistent finding across every extension:
+**the starting grid carries most of the race-day signal.**
+
+- A podium model fed *predicted* qualifying instead of the real grid loses
+  significantly — and doesn't even beat the trivial "top-3 on the grid = podium"
+  rule (holdout Brier 0.0752).
+- Full-race ranking barely improves on simply using the starting order.
+- Retirements are unpredictable beyond a team's recent reliability rate — no DNF
+  model beats that baseline.
+
+These negative results are kept on purpose: knowing what *doesn't* add edge is
+as valuable as what does. It's also why the markets with the most independent
+value are the **qualifying** ones — priced before the grid that dominates
+everything downstream even exists. The open question is the only one that
+matters: over a full season, do the calibrated edges clear the bookmaker's
+margin?
     """
 )
