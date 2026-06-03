@@ -1,7 +1,8 @@
 # F1 Predictions
 
-Pre-race podium and teammate-H2H probabilities for Formula 1, built from
-scratch as a learning project — and a long-run attempt to beat Tipico.
+Probabilistic Formula 1 betting models — podium, team-mate H2H, the four
+qualifying markets, full grid & finish order, and DNF risk — built from scratch
+as a learning project and a long-run attempt to beat Tipico.
 
 **Live demo:** <https://huggingface.co/spaces/d0kj4/F1_Prediction>
 
@@ -14,9 +15,16 @@ scratch as a learning project — and a long-run attempt to beat Tipico.
 | 0 | Setup, tooling, FastF1 smoke | done |
 | 1 | MVP — pre-race podium + teammate H2H, calibrated, beats the top-3-quali baseline | done |
 | 2 | Streamlit multi-page app on HuggingFace Spaces | done |
-| 3 | Pre-quali model (no quali features) | next |
-| 4 | Bookmaker odds + ROI backtest ("beat Tipico") | planned |
-| 5+ | Ranking model, dedicated DNF sub-model, live in-race | open-ended |
+| 3 | Next-race predict pipeline (Saturday-after-quali forecast, sprint-safe) | done |
+| 4 | Manual odds + Kelly stakes + ROI loop; pre-quali model (4 qualifying markets, 2 timing modes) | done |
+| 5 | Ranking model (grid & finish order) + dedicated DNF sub-model | done |
+| 5.3–5.9 | Feature-engineering wave — overtaking index, team-execution residual, teammate quali gap, wet-skill delta, form momentum | done |
+| next | Collect real ROI over the 2026 season — the actual "beat Tipico?" answer; live in-race stays open | in progress |
+
+> Several extensions are documented **negative results** kept on purpose
+> (pre-quali→podium composition, full-race ranking vs. grid, the DNF sub-model):
+> the recurring lesson is that the starting grid carries most of the race-day
+> signal. See [`PLANNING.md`](PLANNING.md) §13–23.
 
 **Phase-1 headline:** calibrated XGB+LGBM ensemble reaches Brier **0.0629**,
 beating the F1-domain "top-3-quali = podium" baseline at **0.0752**

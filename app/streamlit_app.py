@@ -92,8 +92,8 @@ page = st.navigation(
 
 ui.app_header(
     "F1 Predictions",
-    "2026 · ensemble",
-    status="pre-race podium + H2H probabilities",
+    "2026 · calibrated ensemble",
+    status="podium · quali · grid · DNF · ROI",
 )
 
 # Theme toggle. Rendered as sidebar user-content, which CSS reorders ABOVE the
