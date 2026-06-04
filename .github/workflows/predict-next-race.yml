@@ -1,0 +1,153 @@
+name: Predict next race -> HuggingFace
+
+# Set & forget: every Saturday evening (after most qualifying sessions) this
+# resolves the upcoming race, pulls its qualifying + FP2 + weather, builds the
+# next-race feature row, predicts the podium and teammate-H2H markets with the
+# deployed calibration, and pushes the fresh predictions to the HF Space so the
+# "Next Race" page shows the right Grand Prix.
+#
+# REQUIRED SECRET:
+#   HF_TOKEN  - a HuggingFace *write* access token for the account that owns the
+#               Space (Settings -> Access Tokens). Add under the repo's
+#               Settings -> Secrets and variables -> Actions.
+#
+# Safe by construction:
+#   - off-weekends are skipped (no race within 3 days),
+#   - if qualifying has not happened yet the run stops cleanly BEFORE predicting
+#     (no grid-less prediction is ever pushed),
+#   - a manual run (workflow_dispatch, "force") bypasses both guards for testing.
+#
+# Scope: podium + teammate (the Next Race page). The DNF / Grid-Order / Pre-Quali
+# pages are not auto-refreshed yet -- they also need the pre-quali feature build;
+# add predict-dnf / predict-rank here once that is wired in.
+
+on:
+  schedule:
+    # 19:00 UTC Saturdays. Covers European/Asian/Gulf qualifying (Sat afternoon
+    # UTC). For late Americas qualifying that finishes after this, trigger the
+    # workflow manually -- the quali guard keeps an early run from misfiring.
+    - cron: "0 19 * * 6"
+  workflow_dispatch:
+    inputs:
+      force:
+        description: "Run even with no race this weekend / before qualifying (for testing)"
+        type: boolean
+        default: false
+
+# Never let two deploys race each other onto the Space.
+concurrency:
+  group: predict-next-race
+  cancel-in-progress: false
+
+env:
+  HF_SPACE: d0kj4/F1_Prediction
+
+jobs:
+  predict-and-deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          lfs: true
+
+      - name: Set up uv + Python
+        uses: astral-sh/setup-uv@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install dependencies
+        run: uv sync --frozen
+
+      - name: Resolve the upcoming race
+        id: resolve
+        run: uv run python -m src.utils.race_inventory next-round --max-days 3
+
+      - name: Decide whether to proceed
+        id: gate
+        run: |
+          proceed=false
+          if [ "${{ steps.resolve.outputs.has_race }}" = "true" ] \
+             || [ "${{ github.event.inputs.force }}" = "true" ]; then
+            proceed=true
+          fi
+          echo "proceed=$proceed" >> "$GITHUB_OUTPUT"
+          if [ "$proceed" != "true" ]; then
+            echo "No race within 3 days -- nothing to do this weekend. Exiting cleanly."
+          fi
+
+      - name: Ingest the next race (quali + FP2 + weather)
+        if: steps.gate.outputs.proceed == 'true'
+        env:
+          YEAR: ${{ steps.resolve.outputs.year }}
+          ROUND: ${{ steps.resolve.outputs.round }}
+        run: |
+          uv run python -m src.ingest.jolpica_ingest schedule --years "$YEAR" --refresh
+          uv run python -m src.utils.race_inventory build
+          uv run python -m src.ingest.fastf1_ingest next --year "$YEAR" --round "$ROUND"
+          uv run python -m src.ingest.openmeteo_ingest next --year "$YEAR" --round "$ROUND"
+
+      - name: Rebuild processed layers
+        if: steps.gate.outputs.proceed == 'true'
+        run: |
+          uv run python -m src.process.fastf1 build
+          uv run python -m src.process.openmeteo build
+          uv run python -m src.process.overtakes build
+
+      - name: Check qualifying is available
+        id: quali
+        if: steps.gate.outputs.proceed == 'true'
+        env:
+          YEAR: ${{ steps.resolve.outputs.year }}
+          ROUND: ${{ steps.resolve.outputs.round }}
+        run: uv run python -m src.features.next_race check-quali --year "$YEAR" --round "$ROUND"
+
+      - name: Decide whether to predict
+        id: ready
+        if: steps.gate.outputs.proceed == 'true'
+        run: |
+          ready=false
+          if [ "${{ steps.quali.outputs.quali_ready }}" = "true" ] \
+             || [ "${{ github.event.inputs.force }}" = "true" ]; then
+            ready=true
+          fi
+          echo "ready=$ready" >> "$GITHUB_OUTPUT"
+          if [ "$ready" != "true" ]; then
+            echo "Qualifying not available yet for ${{ steps.resolve.outputs.race_id }} -- "
+            echo "stopping before prediction. Re-run after qualifying (or trigger manually)."
+          fi
+
+      - name: Build features + predict (podium + teammate)
+        if: steps.ready.outputs.ready == 'true'
+        env:
+          YEAR: ${{ steps.resolve.outputs.year }}
+          ROUND: ${{ steps.resolve.outputs.round }}
+        run: |
+          uv run python -m src.features.next_race build --year "$YEAR" --round "$ROUND"
+          uv run python -m src.models.predict_next run --year "$YEAR" --round "$ROUND" --target podium
+          uv run python -m src.models.predict_next run --year "$YEAR" --round "$ROUND" --target teammate
+
+      - name: Deploy predictions to the HuggingFace Space
+        if: steps.ready.outputs.ready == 'true'
+        env:
+          HF_TOKEN: ${{ secrets.HF_TOKEN }}
+          RACE_ID: ${{ steps.resolve.outputs.race_id }}
+        run: |
+          if [ -z "$HF_TOKEN" ]; then
+            echo "::error::HF_TOKEN secret is not set. Add a HuggingFace write token under repo Secrets."
+            exit 1
+          fi
+          git lfs install
+          HF_USER="${HF_SPACE%%/*}"
+          git clone "https://${HF_USER}:${HF_TOKEN}@huggingface.co/spaces/${HF_SPACE}" hf_space
+          uv run python scripts/sync_to_hf.py hf_space
+          cd hf_space
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add -A
+          if git diff --cached --quiet; then
+            echo "Nothing changed -- Space already up to date for $RACE_ID."
+          else
+            git commit -m "auto: next-race predictions for $RACE_ID"
+            git push
+            echo "Deployed $RACE_ID predictions to https://huggingface.co/spaces/${HF_SPACE}"
+          fi

@@ -39,6 +39,7 @@ from src.process.fastf1 import load_sessions
 from src.process.jolpica import load_results
 from src.process.openmeteo import load_weather
 from src.process.overtakes import load_overtakes
+from src.utils.gha import emit_output
 from src.utils.paths import FEATURES_DIR
 from src.utils.race_inventory import load_inventory
 from src.utils.tracks import load_tracks
@@ -81,6 +82,20 @@ def _latest_constructor_name(results: pd.DataFrame) -> pd.Series:
     return last.set_index("constructor_id")["constructor_name"]
 
 
+def qualifying_ready(year: int, round_no: int, *, sessions: pd.DataFrame | None = None) -> bool:
+    """Whether usable qualifying data exists for the target race.
+
+    The next-race pipeline synthesizes its grid from FastF1 Q, so this is the
+    gate the CI job checks before predicting: before qualifying runs the Q
+    session is empty (no drivers, all q_position NaN) and a prediction would be
+    grid-less. Shares its exact condition with synthesize_pseudo_results.
+    """
+    if sessions is None:
+        sessions = load_sessions()
+    q = sessions[(sessions["year"] == year) & (sessions["round"] == round_no)]
+    return not (q.empty or not q["has_qualifying"].any() or q["q_position"].isna().all())
+
+
 def synthesize_pseudo_results(
     year: int,
     round_no: int,
@@ -105,8 +120,7 @@ def synthesize_pseudo_results(
         )
     race_date = inv_row.iloc[0]["race_date"]
 
-    q = sessions[(sessions["year"] == year) & (sessions["round"] == round_no)]
-    if q.empty or not q["has_qualifying"].any() or q["q_position"].isna().all():
+    if not qualifying_ready(year, round_no, sessions=sessions):
         raise ValueError(
             f"No qualifying data for {race_id} in sessions.parquet. "
             "Run `just ingest-next YEAR ROUND` after qualifying is over, "
@@ -114,6 +128,7 @@ def synthesize_pseudo_results(
         )
 
     # Sort by quali position so the grid mapping is deterministic.
+    q = sessions[(sessions["year"] == year) & (sessions["round"] == round_no)]
     q = q.sort_values("q_position").reset_index(drop=True)
 
     pseudo = pd.DataFrame(
@@ -219,6 +234,11 @@ def main(argv: list[str] | None = None) -> int:
     p_build.add_argument("--round", type=int, required=True)
     p_show = sub.add_parser("show", help="Print summary of the current next_race.parquet")
     _ = p_show
+    p_check = sub.add_parser(
+        "check-quali", help="Is qualifying available yet? (CI gate before predicting)"
+    )
+    p_check.add_argument("--year", type=int, required=True)
+    p_check.add_argument("--round", type=int, required=True)
 
     args = p.parse_args(argv)
 
@@ -230,6 +250,12 @@ def main(argv: list[str] | None = None) -> int:
         return 0
     if args.cmd == "show":
         _print_summary(load_next_race())
+        return 0
+    if args.cmd == "check-quali":
+        ready = qualifying_ready(args.year, args.round)
+        race_id = f"{args.year}_{args.round:02d}"
+        print(f"[features.next_race] qualifying ready for {race_id}: {ready}")
+        emit_output(quali_ready="true" if ready else "false")
         return 0
     return 0
 
