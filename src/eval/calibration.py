@@ -20,6 +20,7 @@ import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
 from sklearn.isotonic import IsotonicRegression
+from sklearn.linear_model import LogisticRegression
 
 matplotlib.use("Agg")  # headless backend -- write files, never open a window
 
@@ -53,6 +54,110 @@ class IsotonicCalibrator:
 
     def transform(self, y_prob: np.ndarray) -> np.ndarray:
         return self.iso.transform(np.asarray(y_prob, dtype=float))
+
+
+@dataclass
+class BetaCalibrator:
+    """Beta calibration (Kull et al. 2017): a smooth 3-parameter alternative to
+    isotonic. Fits a logistic regression on [ln(p), -ln(1-p)], which spans the
+    beta-distribution family. Unlike isotonic it never produces flat steps or
+    collapses high-prob bins to a single value, so it tends to give better-
+    behaved tails when calibration data is thin -- exactly our small-N regime.
+    """
+
+    lr: LogisticRegression
+    eps: float = DEFAULT_CALIB_EPS
+
+    @staticmethod
+    def _features(y_prob: np.ndarray) -> np.ndarray:
+        p = np.clip(np.asarray(y_prob, dtype=float), 1e-6, 1.0 - 1e-6)
+        return np.column_stack([np.log(p), -np.log1p(-p)])
+
+    @classmethod
+    def fit(
+        cls, y_prob: np.ndarray, y_true: np.ndarray, *, eps: float = DEFAULT_CALIB_EPS
+    ) -> BetaCalibrator:
+        lr = LogisticRegression(solver="lbfgs")
+        lr.fit(cls._features(y_prob), np.asarray(y_true, dtype=int))
+        return cls(lr=lr, eps=eps)
+
+    def transform(self, y_prob: np.ndarray) -> np.ndarray:
+        out = self.lr.predict_proba(self._features(y_prob))[:, 1]
+        return np.clip(out, self.eps, 1.0 - self.eps)
+
+
+@dataclass
+class VennAbersCalibrator:
+    """Inductive Venn-Abers predictor (Vovk & Petej 2014). For a test score s it
+    refits isotonic twice on the calibration set augmented with (s, 0) and
+    (s, 1), reads p0 and p1 at s, and returns p = p1 / (1 - p0 + p1). This is
+    automatically perfectly calibrated in the Venn sense and robust at small N,
+    at the cost of carrying the calibration set and refitting per query (cheap:
+    O(n_unique) isotonic fits; trivial for the ~22-row inference path).
+    """
+
+    cal_scores: np.ndarray
+    cal_labels: np.ndarray
+    eps: float = DEFAULT_CALIB_EPS
+
+    @classmethod
+    def fit(
+        cls, y_prob: np.ndarray, y_true: np.ndarray, *, eps: float = DEFAULT_CALIB_EPS
+    ) -> VennAbersCalibrator:
+        return cls(
+            cal_scores=np.asarray(y_prob, dtype=float),
+            cal_labels=np.asarray(y_true, dtype=float),
+            eps=eps,
+        )
+
+    def transform(self, y_prob: np.ndarray) -> np.ndarray:
+        x = np.asarray(y_prob, dtype=float)
+        uniq, inv = np.unique(x, return_inverse=True)
+        out = np.empty(len(uniq), dtype=float)
+        labels0 = np.append(self.cal_labels, 0.0)
+        labels1 = np.append(self.cal_labels, 1.0)
+        for i, v in enumerate(uniq):
+            scores = np.append(self.cal_scores, v)
+            iso0 = IsotonicRegression(out_of_bounds="clip").fit(scores, labels0)
+            iso1 = IsotonicRegression(out_of_bounds="clip").fit(scores, labels1)
+            p0 = float(iso0.predict([v])[0])
+            p1 = float(iso1.predict([v])[0])
+            denom = 1.0 - p0 + p1
+            out[i] = p1 / denom if denom > 0 else p1
+        return np.clip(out[inv], self.eps, 1.0 - self.eps)
+
+
+# Per-target deployed calibration policy, chosen by the calibration A/B
+# (src/eval/calib_ab.py) on the sealed holdout, overall and per era slice.
+#   podium   : None (raw) -- LGBM/Ensemble are already well-calibrated raw
+#              (ECE ~0.024-0.026, best Brier 0.0624). Isotonic/beta/Venn-Abers
+#              all RAISED ECE and Brier, worst on the 2026 reg-reset slice.
+#   teammate : Venn-Abers on the deployed LogReg -- ties the best Brier
+#              (0.1953), nearly halves ECE (0.0305 -> 0.0201), and is the most
+#              robust on the 2026 slice (0.0864 vs isotonic 0.1152).
+# A value of None means raw probabilities ship as the calibrated column.
+DEPLOYED_CALIBRATOR: dict[str, type | None] = {
+    "podium": None,
+    "teammate": VennAbersCalibrator,
+}
+
+
+def deployed_calibrate(
+    target_short: str,
+    raw_prob: np.ndarray,
+    oof_prob: np.ndarray,
+    oof_true: np.ndarray,
+) -> np.ndarray:
+    """Apply the deployed per-target calibrator (see DEPLOYED_CALIBRATOR).
+
+    Fits the chosen calibrator on leak-free OOF dev predictions and transforms
+    the raw probabilities. If the policy is None (raw), returns raw_prob
+    unchanged -- callers should still skip the OOF computation in that case.
+    """
+    cls = DEPLOYED_CALIBRATOR.get(target_short)
+    if cls is None:
+        return np.asarray(raw_prob, dtype=float)
+    return cls.fit(oof_prob, oof_true).transform(raw_prob)
 
 
 def pair_normalize_teammate(

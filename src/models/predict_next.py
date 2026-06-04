@@ -26,7 +26,11 @@ from pathlib import Path
 import numpy as np
 import pandas as pd
 
-from src.eval.calibration import IsotonicCalibrator, pair_normalize_teammate
+from src.eval.calibration import (
+    DEPLOYED_CALIBRATOR,
+    deployed_calibrate,
+    pair_normalize_teammate,
+)
 from src.eval.walk_forward import oof_predictions, split_dev_test
 from src.features.next_race import load_next_race
 from src.models.mvp import (
@@ -112,21 +116,23 @@ def _predict_one_model(
     dev_df: pd.DataFrame,
     next_df: pd.DataFrame,
     target_col: str,
+    target_short: str,
 ) -> tuple[np.ndarray, np.ndarray]:
     """Returns (raw_prob, cal_prob) aligned to next_df row order.
 
-    Trained on `train_df` (= dev + test, the full historical record). Calibrator
-    is fitted on `dev_df` OOF predictions — same construction as Phase 1.5, so
-    the calibration curve matches the published reliability plot.
+    Trained on `train_df` (= dev + test, the full historical record). The
+    deployed calibrator (DEPLOYED_CALIBRATOR, chosen by the holdout A/B) is
+    fitted on `dev_df` OOF predictions — same leak-free construction as Phase
+    1.5. When the target's policy is raw (podium), calibration is a no-op and
+    the OOF computation is skipped.
     """
     raw_prob = np.asarray(fit_predict(train_df, next_df), dtype=float)
-    if name == "ConstantRate":
-        # ConstantRate produces a flat probability; a calibrator fit on its OOF
-        # is degenerate (single x value). Skip — calibrated == raw.
+    # ConstantRate is a flat probability; a calibrator fit on its OOF is
+    # degenerate (single x value). Raw policies (podium) skip calibration too.
+    if name == "ConstantRate" or DEPLOYED_CALIBRATOR.get(target_short) is None:
         return raw_prob, raw_prob
     oof = oof_predictions(dev_df, fit_predict, target_col=target_col)
-    calibrator = IsotonicCalibrator.fit(oof.y_prob, oof.y_true)
-    cal_prob = calibrator.transform(raw_prob)
+    cal_prob = deployed_calibrate(target_short, raw_prob, oof.y_prob, oof.y_true)
     return raw_prob, cal_prob
 
 
@@ -167,7 +173,9 @@ def predict_next_race(
     for name, fit_predict, _ in _model_specs(
         target_col, target_short, decay_per_month=decay_per_month
     ):
-        raw, cal = _predict_one_model(name, fit_predict, mvp, dev, nxt, target_col)
+        raw, cal = _predict_one_model(
+            name, fit_predict, mvp, dev, nxt, target_col, target_short
+        )
         raw_by_name[name] = raw
         cal_by_name[name] = cal
         out[f"prob_{name.lower()}_raw"] = raw

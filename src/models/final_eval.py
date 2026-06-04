@@ -1,8 +1,9 @@
 """Final MVP evaluation on the sealed holdout test set (podium + teammate H2H).
 
-Trains the MVP model set on the full dev set, calibrates each with isotonic
-regression fitted on leak-free out-of-fold predictions, and scores raw vs.
-calibrated probabilities on the holdout test set (races 2024-07-01 onward).
+Trains the MVP model set on the full dev set, applies the deployed per-target
+calibrator (src/eval/calibration.DEPLOYED_CALIBRATOR, chosen by the holdout A/B
+in src/eval/calib_ab.py) fitted on leak-free out-of-fold predictions, and scores
+raw vs. calibrated probabilities on the holdout test set (races 2024-07-01 on).
 ConstantRate and the logistic baseline are scored on the same split, so every
 number in the final table is directly comparable.
 
@@ -30,8 +31,9 @@ import numpy as np
 import pandas as pd
 
 from src.eval.calibration import (
-    IsotonicCalibrator,
+    DEPLOYED_CALIBRATOR,
     calibration_plot,
+    deployed_calibrate,
     ece,
     pair_normalize_teammate,
 )
@@ -107,13 +109,18 @@ def _evaluate_model(
     # Final model trains on the full dev set and scores the holdout test set.
     raw_prob = np.asarray(fit_predict(dev, test), dtype=float)
 
-    # Isotonic calibrator is fitted on leak-free out-of-fold dev predictions.
-    oof = oof_predictions(dev, fit_predict, target_col=target_col)
-    calibrator = IsotonicCalibrator.fit(oof.y_prob, oof.y_true)
-    cal_prob = calibrator.transform(raw_prob)
+    # Deployed per-target calibrator (DEPLOYED_CALIBRATOR), fitted on leak-free
+    # OOF dev predictions. ConstantRate's OOF is degenerate (flat), and raw
+    # policies (podium) skip calibration entirely, so cal == raw there.
+    if name == "ConstantRate" or DEPLOYED_CALIBRATOR.get(target_short) is None:
+        cal_prob = raw_prob
+    else:
+        oof = oof_predictions(dev, fit_predict, target_col=target_col)
+        cal_prob = deployed_calibrate(target_short, raw_prob, oof.y_prob, oof.y_true)
 
-    # Couple teammate pairs so each constructor sums to 1.0. Per-driver isotonic
-    # leaves them independent; for "beat your teammate" that is logically wrong.
+    # Couple teammate pairs so each constructor sums to 1.0. Per-driver
+    # calibration leaves them independent; for "beat your teammate" that is
+    # logically wrong.
     if target_short == "teammate":
         cal_prob = pair_normalize_teammate(cal_prob, test["constructor_id"].to_numpy())
 
@@ -287,13 +294,23 @@ def _print_report(
             f"  95% CI [{bl_lo:+.4f}, {bl_hi:+.4f}]  (mean diff {bl_diff:+.4f})  ->  {bl_verdict}"
         )
 
-    helped = [
-        n for n in _REAL_MODELS if by_name[n].metrics["brier_cal"] < by_name[n].metrics["brier_raw"]
-    ]
-    if helped:
-        print(f"Isotonic calibration lowered Brier for: {', '.join(helped)}")
+    policy = DEPLOYED_CALIBRATOR.get(target_short)
+    if policy is None:
+        print(
+            "Deployed calibration policy: raw probs (calibration is a no-op for "
+            "this target -- raw is already best on the holdout A/B)."
+        )
     else:
-        print("Isotonic calibration lowered Brier for no model -- raw probs already calibrated.")
+        method = policy.__name__.replace("Calibrator", "")
+        helped = [
+            n
+            for n in _REAL_MODELS
+            if by_name[n].metrics["brier_cal"] < by_name[n].metrics["brier_raw"]
+        ]
+        if helped:
+            print(f"{method} calibration lowered Brier for: {', '.join(helped)}")
+        else:
+            print(f"{method} calibration lowered Brier for no model -- raw probs already calibrated.")
     print(f"Best model (raw Brier): {best} = {by_name[best].metrics['brier_raw']:.4f}")
     print("Lower brier/ece/logloss = better; higher top3 = better.")
     print(f"MLflow -> mlruns/   |   predictions -> {predictions_path}")

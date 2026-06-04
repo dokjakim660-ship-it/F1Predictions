@@ -6,7 +6,11 @@ import numpy as np
 
 from src.eval.calibration import (
     DEFAULT_CALIB_EPS,
+    DEPLOYED_CALIBRATOR,
+    BetaCalibrator,
     IsotonicCalibrator,
+    VennAbersCalibrator,
+    deployed_calibrate,
     ece,
     pair_normalize_teammate,
 )
@@ -60,6 +64,65 @@ def test_isotonic_calibrator_eps_zero_recovers_legacy_bounds() -> None:
     calibrator = IsotonicCalibrator.fit(raw, y_true, eps=0.0)
     assert calibrator.transform(np.array([1.0]))[0] == 1.0
     assert calibrator.transform(np.array([0.0]))[0] == 0.0
+
+
+def _miscalibrated_overconfident(n: int, seed: int) -> tuple[np.ndarray, np.ndarray]:
+    """Raw scores that are systematically over-confident: the true event rate is
+    a shrunk version of the score, so a good calibrator must pull probs toward
+    the centre and lower ECE."""
+    rng = np.random.default_rng(seed)
+    raw = rng.uniform(0.0, 1.0, n)
+    true_p = 0.5 + 0.4 * (raw - 0.5)  # squashed toward 0.5
+    y_true = (rng.uniform(0.0, 1.0, n) < true_p).astype(int)
+    return raw, y_true
+
+
+def test_beta_calibrator_bounded_and_improves_ece() -> None:
+    raw, y_true = _miscalibrated_overconfident(4000, seed=10)
+    cal = BetaCalibrator.fit(raw, y_true).transform(raw)
+    assert cal.min() >= DEFAULT_CALIB_EPS - 1e-9
+    assert cal.max() <= 1.0 - DEFAULT_CALIB_EPS + 1e-9
+    assert ece(y_true, cal) < ece(y_true, raw)
+
+
+def test_beta_calibrator_is_monotonic() -> None:
+    raw, y_true = _miscalibrated_overconfident(4000, seed=11)
+    fitted = BetaCalibrator.fit(raw, y_true)
+    out = fitted.transform(np.linspace(0.01, 0.99, 50))
+    assert np.all(np.diff(out) >= -1e-9)  # logistic in log-odds features => monotone
+
+
+def test_venn_abers_calibrator_bounded_and_improves_ece() -> None:
+    raw, y_true = _miscalibrated_overconfident(3000, seed=12)
+    cal = VennAbersCalibrator.fit(raw, y_true).transform(raw)
+    assert cal.min() >= DEFAULT_CALIB_EPS - 1e-9
+    assert cal.max() <= 1.0 - DEFAULT_CALIB_EPS + 1e-9
+    assert ece(y_true, cal) < ece(y_true, raw)
+
+
+def test_venn_abers_calibrator_is_monotonic() -> None:
+    raw, y_true = _miscalibrated_overconfident(3000, seed=13)
+    fitted = VennAbersCalibrator.fit(raw, y_true)
+    out = fitted.transform(np.linspace(0.05, 0.95, 30))
+    assert np.all(np.diff(out) >= -1e-9)  # IVAP is monotone in the score
+
+
+def test_deployed_calibrate_podium_is_raw_passthrough() -> None:
+    # Podium policy is None (raw) -- the helper must return raw unchanged and
+    # must not require meaningful OOF inputs.
+    assert DEPLOYED_CALIBRATOR["podium"] is None
+    raw = np.array([0.1, 0.5, 0.9])
+    out = deployed_calibrate("podium", raw, np.array([]), np.array([]))
+    np.testing.assert_array_equal(out, raw)
+
+
+def test_deployed_calibrate_teammate_uses_venn_abers() -> None:
+    assert DEPLOYED_CALIBRATOR["teammate"] is VennAbersCalibrator
+    raw, y_true = _miscalibrated_overconfident(2000, seed=14)
+    out = deployed_calibrate("teammate", raw, raw, y_true)
+    assert out.min() >= DEFAULT_CALIB_EPS - 1e-9
+    assert out.max() <= 1.0 - DEFAULT_CALIB_EPS + 1e-9
+    assert ece(y_true, out) < ece(y_true, raw)
 
 
 def test_pair_normalize_teammate_sums_to_one() -> None:
