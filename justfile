@@ -222,6 +222,12 @@ tune-mvp TRIALS="50" TARGET="podium":
 final-eval TARGET="podium":
     uv run python -m src.models.final_eval run --target {{TARGET}}
 
+# Calibration A/B on the holdout: raw vs isotonic vs beta vs Venn-Abers per
+# model, overall and per era slice (pre-2026 vs 2026 reg reset). Evidence behind
+# the deployed DEPLOYED_CALIBRATOR policy. Eval-only.
+calib-ab TARGET="both":
+    uv run python -m src.eval.calib_ab run --target {{TARGET}}
+
 # Feature importance for the best model (XGB+SHAP for podium, LogReg coefs for teammate).
 # Writes predictions/importance_{TARGET}.parquet, consumed by the Streamlit app.
 importance TARGET="podium":
