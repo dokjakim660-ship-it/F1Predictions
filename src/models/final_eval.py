@@ -299,6 +299,67 @@ def _print_report(
     print(f"MLflow -> mlruns/   |   predictions -> {predictions_path}")
 
 
+def _print_drift_report(
+    test: pd.DataFrame, evals: list[ModelEval], target_col: str
+) -> None:
+    """Slice the holdout by era (pre-2026 vs the 2026 regulation reset) and
+    compare each model's calibrated Brier on each slice.
+
+    Brier depends on the base rate, which differs slightly between slices, so a
+    raw Brier gap could masquerade as drift. We normalise with the Brier Skill
+    Score (BSS = 1 - brier_model / brier_constant) against the ConstantRate
+    floor scored on the SAME slice -- BSS is the model's edge over the trivial
+    base-rate guess, so comparing BSS across slices isolates whether the edge
+    survives the reg reset. Directional only while 2026 is a handful of races.
+    """
+    year = test["year"].to_numpy()
+    mask_26 = year >= 2026
+    mask_pre = ~mask_26
+    n_races_pre = test.loc[mask_pre, "race_id"].nunique()
+    n_races_26 = test.loc[mask_26, "race_id"].nunique()
+    if n_races_26 == 0 or n_races_pre == 0:
+        return
+
+    y_true = test[target_col].astype(int).to_numpy()
+    by_name = {ev.name: ev for ev in evals}
+    floor = by_name.get("ConstantRate")
+    names = [n for n in ("Top3Quali", *_REAL_MODELS) if n in by_name]
+
+    def slice_stats(prob: np.ndarray, mask: np.ndarray) -> tuple[float, float]:
+        b = brier(y_true[mask], prob[mask])
+        b_floor = brier(y_true[mask], floor.cal_prob[mask]) if floor is not None else float("nan")
+        bss = 1.0 - b / b_floor if b_floor else float("nan")
+        return b, bss
+
+    print()
+    print("=" * 95)
+    print(
+        "Era drift -- calibrated Brier by holdout slice "
+        f"(pre-2026: {n_races_pre} races, {int(mask_pre.sum())} rows  |  "
+        f"2026 reg reset: {n_races_26} races, {int(mask_26.sum())} rows)"
+    )
+    print("=" * 95)
+    print(
+        f"{'model':<20s}  {'brier(<2026)':>12s}  {'brier(2026)':>11s}  {'d_brier':>7s}  "
+        f"{'BSS(<2026)':>10s}  {'BSS(2026)':>9s}  {'d_BSS':>7s}"
+    )
+    print("-" * 95)
+    for name in names:
+        prob = by_name[name].cal_prob
+        b_pre, bss_pre = slice_stats(prob, mask_pre)
+        b_26, bss_26 = slice_stats(prob, mask_26)
+        print(
+            f"{name:<20s}  {b_pre:>12.4f}  {b_26:>11.4f}  {b_26 - b_pre:>+7.4f}  "
+            f"{bss_pre:>10.3f}  {bss_26:>9.3f}  {bss_26 - bss_pre:>+7.3f}"
+        )
+    print("=" * 95)
+    print(
+        "d_brier > 0 or d_BSS < 0 on 2026 = edge eroding under the reg reset. "
+        f"With only {n_races_26} races this is directional, not significant -- "
+        "re-read after each new 2026 race."
+    )
+
+
 def run(target_short: str = DEFAULT_TARGET) -> int:
     if target_short not in TARGETS:
         print(
@@ -327,6 +388,7 @@ def run(target_short: str = DEFAULT_TARGET) -> int:
     _log_mlflow(evals, plot_path, target_short)
     _append_changelog(evals, target_short)
     _print_report(test, evals, target_col, target_short, predictions_path)
+    _print_drift_report(test, evals, target_col)
     return 0
 
 
