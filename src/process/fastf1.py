@@ -280,6 +280,24 @@ def _sprint_rows(session_dir: Path, race_id: str, year: int, round_no: int) -> p
     )
 
 
+# Driver-id/team strings that FastF1 leaves blank when a session predates the
+# official entry-list mapping (notably 2026 FP2-only results files): treat them
+# as missing so the historical fallback can fill them.
+_BLANK_IDS = frozenset({"", "nan", "none", "<na>", "na"})
+
+
+def _blank_to_na(df: pd.DataFrame, cols: list[str]) -> pd.DataFrame:
+    """Replace blank/`nan`/`<NA>` id strings with real NaN so fillna can work."""
+    df = df.copy()
+    for c in cols:
+        if c not in df.columns:
+            continue
+        col = df[c].astype(object)
+        mask = col.isna() | col.astype(str).str.strip().str.lower().isin(_BLANK_IDS)
+        df[c] = col.where(~mask)
+    return df
+
+
 def _driver_dim_from_quali_or_race(quali_dir: Path | None, race_dir: Path | None) -> pd.DataFrame:
     """Driver-abbr -> driver_id/team mapping from the most-trustworthy results file."""
     for d in (race_dir, quali_dir):
@@ -287,7 +305,7 @@ def _driver_dim_from_quali_or_race(quali_dir: Path | None, race_dir: Path | None
             continue
         results = _safe_read(d / "results.parquet")
         if results is not None and not results.empty:
-            return pd.DataFrame(
+            dim = pd.DataFrame(
                 {
                     "driver_abbr": results["Abbreviation"].astype(str),
                     "driver_id": results["DriverId"].astype(str),
@@ -295,7 +313,33 @@ def _driver_dim_from_quali_or_race(quali_dir: Path | None, race_dir: Path | None
                     "team_name": results["TeamName"].astype(str),
                 }
             ).drop_duplicates(subset=["driver_abbr"])
+            return _blank_to_na(dim, ["driver_id", "team_id", "team_name"]).dropna(
+                subset=["driver_id"]
+            )
     return pd.DataFrame(columns=["driver_abbr", "driver_id", "team_id", "team_name"])
+
+
+def _global_driver_dim(
+    sessions: dict[tuple[int, int], dict[str, Path]],
+) -> pd.DataFrame:
+    """driver_abbr -> driver_id/team from every weekend that has Q or R results.
+
+    An FP2-only weekend (a pre-quali Friday) has no Q/R file, and FastF1's 2026
+    FP2 results.parquet carries an empty DriverId, so its FP2 rows would get a
+    null driver_id and silently drop out of the `["race_id", "driver_id"]`
+    feature join -- losing all FP2 long-run pace. This collects the abbr->id
+    mapping from every completed weekend (latest occurrence wins, so a reused
+    three-letter code maps to the current driver) to fill those gaps.
+    """
+    frames: list[pd.DataFrame] = []
+    for _key, code_to_dir in sorted(sessions.items()):
+        dim = _driver_dim_from_quali_or_race(code_to_dir.get("Q"), code_to_dir.get("R"))
+        if not dim.empty:
+            frames.append(dim)
+    if not frames:
+        return pd.DataFrame(columns=["driver_abbr", "driver_id", "team_id", "team_name"])
+    alld = pd.concat(frames, ignore_index=True)
+    return alld.drop_duplicates(subset=["driver_abbr"], keep="last").reset_index(drop=True)
 
 
 def build_sessions(fastf1_dir: Path = FASTF1_DIR) -> pd.DataFrame:
@@ -304,6 +348,10 @@ def build_sessions(fastf1_dir: Path = FASTF1_DIR) -> pd.DataFrame:
         raise FileNotFoundError(
             f"No FastF1 session dirs in {fastf1_dir}. Run: python -m src.ingest.fastf1_ingest all"
         )
+
+    # abbr->driver_id fallback for FP2-only weekends (built from all completed
+    # weekends), so a pre-quali Friday's FP2 pace still joins on driver_id.
+    global_dim = _global_driver_dim(sessions)
 
     all_rows: list[pd.DataFrame] = []
     for (year, round_no), code_to_dir in sessions.items():
@@ -317,7 +365,6 @@ def build_sessions(fastf1_dir: Path = FASTF1_DIR) -> pd.DataFrame:
         r_df = _race_pace_rows(r_dir, race_id, year, round_no) if r_dir else pd.DataFrame()
         fp2_df = _fp2_rows(fp2_dir, race_id, year, round_no) if fp2_dir else pd.DataFrame()
         s_df = _sprint_rows(s_dir, race_id, year, round_no) if s_dir else pd.DataFrame()
-        dim_df = _driver_dim_from_quali_or_race(q_dir, r_dir)
 
         keys = ["race_id", "year", "round", "driver_abbr"]
         frames = [
@@ -333,17 +380,23 @@ def build_sessions(fastf1_dir: Path = FASTF1_DIR) -> pd.DataFrame:
             overlap = set(merged.columns) & set(nxt.columns) - set(keys)
             merged = merged.merge(nxt.drop(columns=list(overlap)), on=keys, how="outer")
 
-        # Fill driver_id/team_id/team_name from dim if missing (e.g. R-only races).
+        # Map driver_abbr -> driver_id/team. Prefer this weekend's own Q/R results;
+        # for an FP2-only (pre-quali) weekend there are none, so fall back to the
+        # global history -- otherwise driver_id stays null and the FP2 pace is lost.
+        merged = _blank_to_na(merged, ["driver_id", "team_id", "team_name"])
+        dim_df = _driver_dim_from_quali_or_race(q_dir, r_dir)
+        if dim_df.empty and not global_dim.empty:
+            dim_df = global_dim[global_dim["driver_abbr"].isin(merged["driver_abbr"].unique())]
         if not dim_df.empty:
             merged = merged.merge(dim_df, on="driver_abbr", how="left", suffixes=("", "_dim"))
             for col in ("driver_id", "team_id", "team_name"):
-                if f"{col}_dim" in merged.columns:
-                    merged[col] = (
-                        merged[col].fillna(merged[f"{col}_dim"])
-                        if col in merged.columns
-                        else merged[f"{col}_dim"]
-                    )
-                    merged = merged.drop(columns=[f"{col}_dim"])
+                dimcol = f"{col}_dim"
+                if dimcol not in merged.columns:
+                    continue
+                merged[col] = (
+                    merged[col].fillna(merged[dimcol]) if col in merged.columns else merged[dimcol]
+                )
+                merged = merged.drop(columns=[dimcol])
 
         merged["has_qualifying"] = not q_df.empty
         merged["has_race"] = not r_df.empty
