@@ -252,15 +252,23 @@ post-race YEAR ROUND:
     uv run python -m src.eval.roi run --year {{YEAR}} --round {{ROUND}}
 
 # Local odds entry (HF's Save button can't persist -- ephemeral filesystem).
-# Step 1: write editable CSV templates for the four quali markets, pre-filled with
-# each driver + the deployed model's P and a blank `odds` column.
+# Step 1: write editable CSV templates (driver + deployed model's P + blank `odds`).
+# QUALI markets (pole/top3/top10/teammate-Q) -- enter after FP2, before qualifying.
 quali-odds-template YEAR ROUND:
-    uv run python -m src.eval.odds_entry template --year {{YEAR}} --round {{ROUND}}
+    uv run python -m src.eval.odds_entry template --year {{YEAR}} --round {{ROUND}} --target quali
 
 # Step 2 (after filling the `odds` column in data/odds/templates/*.csv): save the
 # odds JSON + archive the prediction snapshot so post-quali can settle the bets.
 save-quali-odds YEAR ROUND:
-    uv run python -m src.eval.odds_entry save --year {{YEAR}} --round {{ROUND}}
+    uv run python -m src.eval.odds_entry save --year {{YEAR}} --round {{ROUND}} --target quali
+
+# RACE markets (podium/teammate) -- enter after qualifying, before the race.
+# Needs the post-quali prediction: run `just build-next-features Y N` + `predict-next Y N` first.
+race-odds-template YEAR ROUND:
+    uv run python -m src.eval.odds_entry template --year {{YEAR}} --round {{ROUND}} --target race
+
+save-race-odds YEAR ROUND:
+    uv run python -m src.eval.odds_entry save --year {{YEAR}} --round {{ROUND}} --target race
 
 # Phase 4.2.7 quali-market ROI: evaluate the four pre-quali bets (pole/top3/top10/
 # teammate-Q) against odds saved via save-quali-odds (or the Pre-Quali Stakes page).

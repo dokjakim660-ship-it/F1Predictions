@@ -21,11 +21,14 @@ def wired(tmp_path, monkeypatch):
     """Point all roi.* path globals at a tmp dir and return it."""
     odds = tmp_path / "odds"
     archive = tmp_path / "archive"
+    results = tmp_path / "results"
     feats = tmp_path / "mvp.parquet"
     odds.mkdir()
     archive.mkdir()
+    results.mkdir()
     monkeypatch.setattr(roi, "ODDS_DIR", odds)
     monkeypatch.setattr(roi, "ARCHIVE_DIR", archive)
+    monkeypatch.setattr(roi, "RESULTS_DIR", results)
     monkeypatch.setattr(roi, "MVP_FEATURES", feats)
     monkeypatch.setattr(roi, "ROI_DIR", tmp_path)
     monkeypatch.setattr(roi, "ROI_LOG", tmp_path / "log.parquet")
@@ -123,6 +126,48 @@ def test_quali_logs_every_model(wired):
     assert set(df["model"]) == set(models)
     assert (df["driver_id"] == "ver").all()
     assert (df["target"] == "pole").all()
+
+
+def test_race_podium_logs_every_model(wired):
+    """evaluate_race paper-trades every model in the archive (minus ConstantRate)."""
+    race_id = "2099_01"
+    cols = {
+        "race_id": race_id,
+        "driver_id": ["ver", "ham", "nor"],
+        "constructor_id": ["rb", "merc", "mcl"],
+    }
+    models = ["logisticregression", "xgboost", "lightgbm", "ensemble", "top3quali"]
+    for m in models:
+        cols[f"prob_{m}_cal"] = [0.60, 0.05, 0.05]
+    cols["prob_constantrate_cal"] = [0.30, 0.30, 0.30]  # flat baseline -> dropped
+    pd.DataFrame(cols).to_parquet(roi.ARCHIVE_DIR / f"{race_id}_podium.parquet", index=False)
+    (roi.ODDS_DIR / f"{race_id}_podium.json").write_text(json.dumps({"ver": 2.0}))
+    (roi.RESULTS_DIR / f"{race_id}.json").write_text(
+        json.dumps(
+            {
+                "MRData": {
+                    "RaceTable": {
+                        "Races": [
+                            {
+                                "Results": [
+                                    {"position": "1", "Driver": {"driverId": "ver"}},
+                                    {"position": "2", "Driver": {"driverId": "ham"}},
+                                    {"position": "3", "Driver": {"driverId": "nor"}},
+                                ]
+                            }
+                        ]
+                    }
+                }
+            }
+        )
+    )
+
+    df = roi.evaluate_race(2099, 1)
+    # Every real model placed ver's podium bet; ConstantRate excluded.
+    assert set(df["model"]) == set(models)
+    assert "constantrate" not in set(df["model"])
+    assert (df["driver_id"] == "ver").all()
+    assert df["won"].all()  # ver finished P1
 
 
 def test_append_keeps_other_models_and_markets(wired):

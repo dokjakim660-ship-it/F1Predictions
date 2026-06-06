@@ -42,7 +42,7 @@ def _write_pred(wired) -> None:
             "prob_post_fp2_logisticregression_cal": [0.4, 0.3, 0.2],
             "prob_pre_weekend_logisticregression_cal": [0.3, 0.3, 0.3],
         }
-    ).to_parquet(odds_entry._prediction_path("pole"), index=False)
+    ).to_parquet(odds_entry._prediction_path(odds_entry._MARKETS["pole"]), index=False)
 
 
 def test_template_then_save_roundtrip(wired):
@@ -75,3 +75,32 @@ def test_template_then_save_roundtrip(wired):
 def test_save_without_template_is_noop(wired):
     _write_pred(wired)
     assert odds_entry.save_odds(2099, 1, "pole") is None
+
+
+def test_race_market_roundtrip_uses_id_fallback(wired):
+    """Race parquets carry only ids (no family/team names) and no timing mode."""
+    pd.DataFrame(
+        {
+            "race_id": "2099_01",
+            "driver_id": ["ver", "ham"],
+            "constructor_id": ["rb", "ferrari"],
+            "prob_ensemble_cal": [0.5, 0.3],  # deployed podium model, no mode prefix
+        }
+    ).to_parquet(odds_entry._prediction_path(odds_entry._MARKETS["podium"]), index=False)
+
+    tmpl = odds_entry.write_template(2099, 1, "podium")
+    df = pd.read_csv(tmpl)
+    # Falls back to driver_id / constructor_id for the display columns.
+    assert df.loc[df["driver_id"] == "ver", "driver"].iloc[0] == "ver"
+    assert df.loc[df["driver_id"] == "ver", "team"].iloc[0] == "rb"
+
+    df["odds"] = df["odds"].astype("object")
+    df.loc[df["driver_id"] == "ver", "odds"] = "2.5"
+    df.to_csv(tmpl, index=False)
+
+    result = odds_entry.save_odds(2099, 1, "podium")
+    assert result is not None
+    _, odds_json, archive = result
+    assert json.loads(odds_json.read_text()) == {"ver": 2.5}
+    # Race archive has NO `prequali_` infix (roi.evaluate_race reads this name).
+    assert archive.name == "2099_01_podium.parquet"

@@ -141,6 +141,21 @@ def _place_bets(
 # ---------------------------------------------------------------------------
 
 
+def _race_models(preds: pd.DataFrame) -> list[str]:
+    """Model names with a calibrated column in a race-prediction frame.
+
+    Race columns are `prob_{model}_cal` (no timing mode). ConstantRate (a flat
+    base rate) is dropped -- useless to bet, mirroring the quali model list.
+    """
+    out = []
+    for c in preds.columns:
+        if c.startswith("prob_") and c.endswith("_cal"):
+            name = c[len("prob_") : -len("_cal")]
+            if name != "constantrate":
+                out.append(name)
+    return out
+
+
 def _teammate_beat_lookup(preds: pd.DataFrame, pos: dict[str, int]) -> dict[str, bool]:
     """driver_id -> beat their teammate, from constructor pairs in `preds`."""
     from collections import defaultdict
@@ -181,12 +196,6 @@ def evaluate_race(
 
         odds_map: dict[str, float] = json.loads(odds_path.read_text())
         preds = pd.read_parquet(preds_path)
-        model = _RACE_MODEL[target]
-        model_col = f"prob_{model}_cal"
-
-        if model_col not in preds.columns:
-            print(f"[roi] column {model_col} missing in {preds_path.name} — skipping")
-            continue
 
         if target == "podium":
             podium = _actual_podium(race_id)
@@ -199,21 +208,24 @@ def evaluate_race(
             def won_fn(driver_id: str, _beat: dict[str, bool] = beat) -> bool:
                 return _beat.get(driver_id, False)
 
-        rows.extend(
-            _place_bets(
-                preds,
-                model_col,
-                odds_map,
-                won_fn,
-                race_id=race_id,
-                year=year,
-                round_=round_,
-                target=target,
-                model=model,
-                kelly_frac=kelly_frac,
-                bankroll=bankroll,
+        # Paper-trade every model in the archive against the same entered odds
+        # (deployed one in _RACE_MODEL is the real bet; rest accrue per-model ROI).
+        for model in _race_models(preds):
+            rows.extend(
+                _place_bets(
+                    preds,
+                    f"prob_{model}_cal",
+                    odds_map,
+                    won_fn,
+                    race_id=race_id,
+                    year=year,
+                    round_=round_,
+                    target=target,
+                    model=model,
+                    kelly_frac=kelly_frac,
+                    bankroll=bankroll,
+                )
             )
-        )
 
     return pd.DataFrame(rows)
 
