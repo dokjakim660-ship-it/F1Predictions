@@ -91,7 +91,41 @@ def test_quali_mode_falls_back_on_sprint(wired):
     assert df.empty
 
 
-def test_append_keeps_race_when_quali_added(wired):
+def test_quali_logs_every_model(wired):
+    """All five pre-quali models present in the parquet are paper-traded + tagged."""
+    race_id = "2099_01"
+    base = {
+        "race_id": race_id,
+        "driver_id": ["ver", "ham", "nor"],
+        "constructor_id": ["rb", "merc", "mcl"],
+        "has_fp2": 1,
+    }
+    # Give every model a column where ver is a clear value bet (p well above 1/3).
+    models = ["recentqualiform", "logisticregression", "xgboost", "lightgbm", "ensemble"]
+    for m in models:
+        base[f"prob_post_fp2_{m}_cal"] = [0.50, 0.05, 0.05]
+        base[f"prob_pre_weekend_{m}_cal"] = [0.10, 0.10, 0.10]
+    pd.DataFrame(base).to_parquet(roi.ARCHIVE_DIR / f"{race_id}_prequali_pole.parquet", index=False)
+    (roi.ODDS_DIR / f"{race_id}_pole.json").write_text(json.dumps({"ver": 3.0}))
+    pd.DataFrame(
+        {
+            "race_id": race_id,
+            "driver_id": ["ver", "ham", "nor"],
+            "target_pole": [1.0, 0.0, 0.0],
+            "target_top3_quali": [1.0, 1.0, 1.0],
+            "target_top10_quali": [1.0, 1.0, 1.0],
+            "target_quali_beat_teammate": [1.0, 0.0, 1.0],
+        }
+    ).to_parquet(roi.MVP_FEATURES, index=False)
+
+    df = roi.evaluate_quali_race(2099, 1)
+    # Every model placed ver's pole bet, each tagged distinctly.
+    assert set(df["model"]) == set(models)
+    assert (df["driver_id"] == "ver").all()
+    assert (df["target"] == "pole").all()
+
+
+def test_append_keeps_other_models_and_markets(wired):
     base_cols = dict(
         race_id="2099_01",
         year=2099,
@@ -107,19 +141,24 @@ def test_append_keeps_race_when_quali_added(wired):
         won=True,
         pnl_eur=12.5,
     )
-    race_df = pd.DataFrame([{**base_cols, "target": "podium"}])
-    quali_df = pd.DataFrame([{**base_cols, "target": "pole"}])
+    race_df = pd.DataFrame([{**base_cols, "target": "podium", "model": "ensemble"}])
+    quali_lr = pd.DataFrame([{**base_cols, "target": "pole", "model": "logisticregression"}])
+    quali_ens = pd.DataFrame([{**base_cols, "target": "pole", "model": "ensemble"}])
 
     roi.append_to_log(race_df)
-    roi.append_to_log(quali_df)
+    roi.append_to_log(pd.concat([quali_lr, quali_ens], ignore_index=True))
 
     log = roi.load_log()
-    # Both markets coexist for the same race_id.
-    assert set(log["target"]) == {"podium", "pole"}
-    assert len(log) == 2
+    # Race market + both quali models coexist (dedup is per race_id/target/model).
+    assert len(log) == 3
+    assert set(zip(log["target"], log["model"], strict=True)) == {
+        ("podium", "ensemble"),
+        ("pole", "logisticregression"),
+        ("pole", "ensemble"),
+    }
 
-    # Re-running the quali market replaces only its own row, leaving podium intact.
-    roi.append_to_log(quali_df)
+    # Re-running only the LogReg pole bet replaces its own row, leaving the
+    # ensemble pole bet and the podium row intact.
+    roi.append_to_log(quali_lr)
     log = roi.load_log()
-    assert sorted(log["target"]) == ["podium", "pole"]
-    assert len(log) == 2
+    assert len(log) == 3

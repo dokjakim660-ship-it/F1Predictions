@@ -37,7 +37,9 @@ RESULTS_DIR = RAW_DIR / "jolpica" / "results"
 MVP_FEATURES = FEATURES_DIR / "mvp.parquet"
 
 MIN_STAKE_EUR = 1.0
-_DEFAULT_MODEL = {"podium": "prob_ensemble_cal", "teammate": "prob_logisticregression_cal"}
+
+# Race markets: deployed model short-name per target (column = prob_{name}_cal).
+_RACE_MODEL = {"podium": "ensemble", "teammate": "logisticregression"}
 
 # Pre-quali markets: bet target -> the feature-table target column holding the
 # realised 0/1 outcome (NaN where the driver set no quali time).
@@ -47,8 +49,14 @@ _QUALI_TARGET_COL = {
     "top10_quali": "target_top10_quali",
     "teammate_quali": "target_quali_beat_teammate",
 }
-# LogReg is the documented pre-quali default (most robust at this N).
-_QUALI_MODEL_KEY = "logisticregression"
+
+# Every pre-quali model is paper-traded against the entered odds, so realised ROI
+# per model accrues over the season -- the empirical tie-breaker when the holdout
+# Brier gaps between models sit within noise (see the pole LogReg-vs-Ensemble
+# debate). LogReg is the DEPLOYED model the Stakes page actually sizes; the rest
+# are hypothetical bets on the same odds, distinguished by the `model` log column.
+_QUALI_MODELS = ("recentqualiform", "logisticregression", "xgboost", "lightgbm", "ensemble")
+_QUALI_DEPLOYED_MODEL = "logisticregression"
 
 
 # ---------------------------------------------------------------------------
@@ -78,13 +86,15 @@ def _place_bets(
     year: int,
     round_: int,
     target: str,
+    model: str,
     kelly_frac: float,
     bankroll: float,
 ) -> list[dict]:
-    """Size + settle one (market) across its drivers, returning bet-log rows.
+    """Size + settle one (market, model) across its drivers, returning bet-log rows.
 
     A bet is placed only when odds > 1 and the Kelly fraction sizes it at or
     above the minimum stake. `won_fn(driver_id)` returns the realised outcome.
+    `model` tags each row so per-model ROI can be summed across the season.
     """
     rows: list[dict] = []
     for _, row in preds.iterrows():
@@ -110,6 +120,7 @@ def _place_bets(
                 "year": year,
                 "round": round_,
                 "target": target,
+                "model": model,
                 "driver_id": driver_id,
                 "p_model": round(p, 4),
                 "odds": odds,
@@ -170,7 +181,8 @@ def evaluate_race(
 
         odds_map: dict[str, float] = json.loads(odds_path.read_text())
         preds = pd.read_parquet(preds_path)
-        model_col = _DEFAULT_MODEL[target]
+        model = _RACE_MODEL[target]
+        model_col = f"prob_{model}_cal"
 
         if model_col not in preds.columns:
             print(f"[roi] column {model_col} missing in {preds_path.name} — skipping")
@@ -197,6 +209,7 @@ def evaluate_race(
                 year=year,
                 round_=round_,
                 target=target,
+                model=model,
                 kelly_frac=kelly_frac,
                 bankroll=bankroll,
             )
@@ -255,45 +268,53 @@ def evaluate_quali_race(
         # weekend (no FP2), matching the Pre-Quali Stakes page.
         has_fp2 = int(preds["has_fp2"].fillna(0).max())
         mode = "post_fp2" if has_fp2 else "pre_weekend"
-        model_col = f"prob_{mode}_{_QUALI_MODEL_KEY}_cal"
-        if model_col not in preds.columns:
-            print(f"[roi] column {model_col} missing in {preds_path.name} — skipping")
-            continue
 
         outcomes = _actual_quali_outcomes(race_id, target_col)
 
         def won_fn(driver_id: str, _out: dict[str, bool] = outcomes) -> bool:
             return _out.get(driver_id, False)
 
-        rows.extend(
-            _place_bets(
-                preds,
-                model_col,
-                odds_map,
-                won_fn,
-                race_id=race_id,
-                year=year,
-                round_=round_,
-                target=target,
-                kelly_frac=kelly_frac,
-                bankroll=bankroll,
+        # Paper-trade every model against the same entered odds (the deployed one
+        # is the real bet; the rest accrue per-model ROI for the season tie-break).
+        for model in _QUALI_MODELS:
+            model_col = f"prob_{mode}_{model}_cal"
+            if model_col not in preds.columns:
+                continue
+            rows.extend(
+                _place_bets(
+                    preds,
+                    model_col,
+                    odds_map,
+                    won_fn,
+                    race_id=race_id,
+                    year=year,
+                    round_=round_,
+                    target=target,
+                    model=model,
+                    kelly_frac=kelly_frac,
+                    bankroll=bankroll,
+                )
             )
-        )
 
     return pd.DataFrame(rows)
+
+
+_LOG_KEY = ["race_id", "target", "model"]
 
 
 def append_to_log(df: pd.DataFrame) -> None:
     ROI_DIR.mkdir(parents=True, exist_ok=True)
     if ROI_LOG.exists():
         existing = pd.read_parquet(ROI_LOG)
+        if "model" not in existing.columns:
+            existing["model"] = pd.NA  # pre-per-model logs: never collide with named models
         if not df.empty:
-            # Replace only the (race_id, target) combinations being rewritten, so
-            # re-running the quali markets does not clobber the race markets for
-            # the same race_id (both share race_id but differ on target).
-            written = set(zip(df["race_id"], df["target"], strict=True))
-            existing_pairs = zip(existing["race_id"], existing["target"], strict=True)
-            mask = [pair not in written for pair in existing_pairs]
+            # Replace only the (race_id, target, model) combinations being
+            # rewritten, so re-running one market/model leaves the others intact
+            # (race vs quali markets, and the five paper-traded models per market).
+            written = set(zip(*(df[c] for c in _LOG_KEY), strict=True))
+            existing_keys = zip(*(existing[c] for c in _LOG_KEY), strict=True)
+            mask = [key not in written for key in existing_keys]
             existing = existing[mask]
         combined = pd.concat([existing, df], ignore_index=True)
     else:
@@ -306,6 +327,18 @@ def load_log() -> pd.DataFrame:
     if not ROI_LOG.exists():
         return pd.DataFrame()
     return pd.read_parquet(ROI_LOG)
+
+
+def _summary_line(d: pd.DataFrame) -> str:
+    """One-line staked / P&L / ROI / win-rate summary for a slice of the log."""
+    stake = float(d["stake_eur"].sum())
+    pnl = float(d["pnl_eur"].sum())
+    roi = pnl / stake * 100 if stake > 0 else 0.0
+    win_rate = float(d["won"].mean()) * 100 if len(d) else 0.0
+    return (
+        f"{len(d):>4d} bets  staked €{stake:>8.2f}  "
+        f"P&L €{pnl:>+8.2f}  ROI {roi:>+6.1f}%  win {win_rate:>3.0f}%"
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -337,9 +370,8 @@ def main(argv: list[str] | None = None) -> int:
         if df.empty:
             print("[roi] no bets to record — odds saved for this race?")
             return 0
-        print(
-            df[["driver_id", "target", "odds", "edge", "stake_eur", "won", "pnl_eur"]].to_string()
-        )
+        cols = ["model", "driver_id", "target", "odds", "edge", "stake_eur", "won", "pnl_eur"]
+        print(df[[c for c in cols if c in df.columns]].to_string())
         append_to_log(df)
 
     elif args.cmd == "show":
@@ -347,15 +379,31 @@ def main(argv: list[str] | None = None) -> int:
         if df.empty:
             print("[roi] log is empty — run post-race after entering odds")
             return 0
-        total_stake = df["stake_eur"].sum()
-        total_pnl = df["pnl_eur"].sum()
-        roi = total_pnl / total_stake * 100 if total_stake > 0 else 0.0
-        win_rate = df["won"].mean() * 100
-        print(f"[roi] {len(df)} bets across {df['race_id'].nunique()} races")
         print(
-            f"      staked: €{total_stake:.2f}  P&L: €{total_pnl:+.2f}  "
-            f"ROI: {roi:+.1f}%  win rate: {win_rate:.0f}%"
+            f"[roi] {len(df)} bets across {df['race_id'].nunique()} races "
+            f"(every model paper-traded on the entered odds)"
         )
+        if "model" in df.columns and df["model"].notna().any():
+            print("\n  per model (the season tie-breaker — best ROI on top):")
+            ranked = sorted(
+                (
+                    (
+                        d["pnl_eur"].sum() / d["stake_eur"].sum()
+                        if d["stake_eur"].sum() > 0
+                        else 0.0,
+                        m,
+                        d,
+                    )
+                    for m, d in df.groupby("model")
+                ),
+                reverse=True,
+            )
+            for _, model, d in ranked:
+                tag = "  <- deployed" if model == _QUALI_DEPLOYED_MODEL else ""
+                print(f"    {str(model):<20s} {_summary_line(d)}{tag}")
+        print("\n  by market:")
+        for target, d in df.groupby("target"):
+            print(f"    {str(target):<16s} {_summary_line(d)}")
 
     return 0
 
