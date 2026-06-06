@@ -251,10 +251,22 @@ post-race YEAR ROUND:
     uv run python -m src.ingest.jolpica_ingest results --year {{YEAR}} --round {{ROUND}}
     uv run python -m src.eval.roi run --year {{YEAR}} --round {{ROUND}}
 
+# Local odds entry (HF's Save button can't persist -- ephemeral filesystem).
+# Step 1: write editable CSV templates for the four quali markets, pre-filled with
+# each driver + the deployed model's P and a blank `odds` column.
+quali-odds-template YEAR ROUND:
+    uv run python -m src.eval.odds_entry template --year {{YEAR}} --round {{ROUND}}
+
+# Step 2 (after filling the `odds` column in data/odds/templates/*.csv): save the
+# odds JSON + archive the prediction snapshot so post-quali can settle the bets.
+save-quali-odds YEAR ROUND:
+    uv run python -m src.eval.odds_entry save --year {{YEAR}} --round {{ROUND}}
+
 # Phase 4.2.7 quali-market ROI: evaluate the four pre-quali bets (pole/top3/top10/
-# teammate-Q) against odds saved on the Pre-Quali Stakes page. Rebuilds the L2 +
-# feature table first so the realised quali targets (from mvp.parquet) are current,
-# then settles the bets. Run after the weekend (qualifying must be ingested+built).
+# teammate-Q) against odds saved via save-quali-odds (or the Pre-Quali Stakes page).
+# Rebuilds the L2 + feature table first so the realised quali targets (from
+# mvp.parquet) are current, then settles every model's bets. Run after the weekend
+# (qualifying must be ingested+built).
 post-quali YEAR ROUND: build-l2 build
     uv run python -m src.eval.roi run-quali --year {{YEAR}} --round {{ROUND}}
 

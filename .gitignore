@@ -37,6 +37,9 @@ Thumbs.db
 .DS_Store
 desktop.ini
 
+# --- Odds-entry scratch templates (regenerable via `just quali-odds-template`) ---
+data/odds/templates/
+
 # --- Secrets / Local Config ---
 .env
 .env.local
